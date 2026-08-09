@@ -1,47 +1,109 @@
-SCEMQ PROJECT FORMAT v0.1
+SCEMQ PROJECT FORMAT v0.2
 
-SCEMQ is intentionally game-agnostic. A project is a folder selected by the user.
-The project root contains scemq.project.json and a scenes directory.
+SCEMQ projects are ordinary folders. Scene content stays scene-scoped; reusable project content lives in project-level modules.
 
-A scene called scene1 uses:
+PROJECT ROOT
+scemq.project.json
 
-scenes/scene1/scene.meta.scene1.json
-scenes/scene1/scene.visual.scene1.json
-scenes/scene1/scene.logic.scene1.json
-scenes/scene1/objects/<id>.object.scene1.json
-scenes/scene1/dialogues/<character>.dialogue.scene1.json
-scenes/scene1/assets/<image files>
+project/
+  project.ui.json
+  project.variables.json
+  project.settings.json
 
-The scene ID is always present in the filename so files exchanged between people or AI sessions remain unambiguous.
+characters/
+  <character-id>.character.json
 
-VISUAL CONFIG
-scene.visual.scene1.json stores scene-wide visual information such as canvas size, player start position and object references.
-Every visual object has its own file. This includes scenery, props, characters, hotspots and exits.
-Object files store asset path, transform, Z layer, visibility, hotspot state and action bindings.
+inventory/
+  <item-id>.item.json
+
+assets/
+  ui/
+  characters/
+  inventory/
+
+scenes/
+  scene1/
+    scene.meta.scene1.json
+    scene.visual.scene1.json
+    scene.logic.scene1.json
+    objects/
+      <object-id>.object.scene1.json
+    dialogues/
+      <character-id>.dialogue.scene1.json
+    assets/
+      <background, object, state, music and ambient files>
+
+SCENE-SCOPED NAMING
+Scene IDs remain present in every authored scene filename. For example:
+pindle.dialogue.scene1.json
+pindle.dialogue.scene7.json
+fire-alarm.object.scene1.json
+scene.logic.scene1.json
+scene.visual.scene1.json
+
+PROJECT UI
+project/project.ui.json stores:
+- total game screen dimensions
+- the fixed viewport rectangle through which the scene is shown
+- persistent UI elements
+- verb-button actions
+- inventory layout
+- status text
+- optional cursor image paths
 
 CHARACTERS
-Tagging a visual object as type "character" adds stable character metadata to that scene object.
-The character automatically appears in the Dialogues tab.
-Dialogue remains scene-scoped: pindle.dialogue.scene1.json and pindle.dialogue.scene7.json are independent files.
+characters/<id>.character.json stores reusable character identity and runtime defaults:
+- name
+- playable capability
+- walking speed
+- default facing
+- portrait/idle/walk asset slots
+
+A scene object tagged character references a character ID and can be NPC or playable in that scene.
+Dialogue still remains scene-scoped.
+
+INVENTORY
+inventory/<id>.item.json stores reusable item definition and visual asset.
+Runtime ownership is game state, not authoring data.
+
+VISUAL CONFIG
+scene.visual.<scene>.json stores scene-wide layout/runtime geometry:
+- canvas
+- dedicated background
+- player assignment/start
+- spawn points
+- walk polygons
+- depth polygons
+- camera settings
+- ordered object references
+
+Each object remains in its own *.object.<scene>.json file.
+Objects can define multiple named visual states while retaining one transform/hotspot.
 
 LOGIC
-scene.logic.scene1.json contains scene variables and event rules.
+scene.logic.<scene>.json stores scene variables and rules.
 Rules contain an event, optional conditions and ordered actions.
-Hotspot verbs can bind directly to rule IDs through Visual Config without editing JSON.
+Global variables live in project/project.variables.json.
 
 DIALOGUE
-Each talkable character receives a separate scene-scoped dialogue file.
-Dialogue files contain draggable nodes, entry point, player choices, links and optional choice conditions.
+Each talkable scene character uses:
+<character-id>.dialogue.<scene>.json
 
-COLLABORATION / IMPORT
-The engine can import:
-- scene.logic.<scene>.json
-- <character>.dialogue.<scene>.json
-- individual *.object.<scene>.json files
-- scene.visual.<scene>.json
-- SCEMQ visual exchange package files
-
-Visual Config exports a single visual.package.<scene>.json convenience file containing the scene visual config plus all object configs. This is for easy exchange. On disk, the project remains modular.
+IMPORT / AI COLLABORATION
+SCEMQ can import/export modular content without requiring code edits:
+- scene visual packages and individual object files
+- scene logic files
+- scene dialogue files
+- project character files
+- project inventory item files
+- project UI
+- project variables
+- project settings
 
 ASSETS
-Replacing an image through Visual Config copies the selected image into that scene's assets folder and updates the corresponding object file. Missing images render as lightweight placeholders, so configuration can be authored before final art exists.
+Scene assets are copied into that scene's assets directory.
+Reusable character/inventory/UI assets are copied into project assets directories.
+The JSON owns paths; the editor/runtime loads those files directly from the selected local project folder.
+
+BACKWARD COMPATIBILITY
+SCEMQ v0.2 loads v0.1 scene visual/object files and supplies v0.2 defaults for camera, player, spawn, anchors, visual states, interaction points and runtime geometry. Saving writes the updated v0.2 schema.

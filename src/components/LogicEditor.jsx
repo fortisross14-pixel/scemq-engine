@@ -1,116 +1,20 @@
-import React, { useState } from 'react';
+import React,{useState} from 'react';
 import InspectorField from './InspectorField.jsx';
-import { ACTION_TYPES, EVENT_TYPES, createRule } from '../lib/schema.js';
+import { ACTION_TYPES, EVENT_TYPES, VERBS, createRule } from '../lib/schema.js';
 
-function ConditionEditor({ condition, onChange, onDelete }) {
-  return (
-    <div className="logic-mini-row">
-      <select value={condition.left || 'flag'} onChange={(e) => onChange({ ...condition, left: e.target.value })}>
-        <option value="flag">flag</option><option value="variable">variable</option><option value="item">item</option>
-      </select>
-      <input value={condition.key || ''} onChange={(e) => onChange({ ...condition, key: e.target.value })} placeholder="key" />
-      <select value={condition.op || 'equals'} onChange={(e) => onChange({ ...condition, op: e.target.value })}>
-        <option value="equals">equals</option><option value="notEquals">not equals</option><option value="gt">&gt;</option><option value="lt">&lt;</option><option value="has">has</option>
-      </select>
-      <input value={condition.value ?? 'true'} onChange={(e) => onChange({ ...condition, value: e.target.value })} placeholder="value" />
-      <button className="icon-button" onClick={onDelete}>×</button>
-    </div>
-  );
+function ConditionEditor({condition,onChange,onDelete,items,variables}){return <div className="logic-mini-row"><select value={condition.left||'flag'} onChange={e=>onChange({...condition,left:e.target.value})}><option value="flag">flag</option><option value="variable">variable</option><option value="item">item</option></select>{condition.left==='item'?<select value={condition.key||''} onChange={e=>onChange({...condition,key:e.target.value})}><option value="">Choose item</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select>:condition.left==='variable'?<select value={condition.key||''} onChange={e=>onChange({...condition,key:e.target.value})}><option value="">Choose variable</option>{variables.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>:<input value={condition.key||''} onChange={e=>onChange({...condition,key:e.target.value})} placeholder="flag name"/>}<select value={condition.op||'equals'} onChange={e=>onChange({...condition,op:e.target.value})}><option value="equals">equals</option><option value="notEquals">not equals</option><option value="gt">&gt;</option><option value="lt">&lt;</option><option value="has">has</option></select><input value={condition.value??'true'} onChange={e=>onChange({...condition,value:e.target.value})} placeholder="value"/><button className="icon-button" onClick={onDelete}>×</button></div>}
+
+function ActionEditor({action,onChange,onDelete,objects,items,variables,scenes,characters}){
+ const targetOptions=()=>{if(['setVisualState','showObject','hideObject','moveCharacter'].includes(action.type))return objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>);if(['giveItem','removeItem'].includes(action.type))return items.map(i=><option key={i.id} value={i.id}>{i.name}</option>);if(action.type==='setVariable')return variables.map(v=><option key={v.id} value={v.id}>{v.name}</option>);if(action.type==='startDialogue')return characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>);return null};
+ const opts=targetOptions();
+ return <div className="logic-action-card"><div className="logic-action-top"><select value={action.type||'say'} onChange={e=>onChange({...action,type:e.target.value,targetId:'',value:''})}>{ACTION_TYPES.map(t=><option key={t}>{t}</option>)}</select><button className="icon-button" onClick={onDelete}>×</button></div>{action.type==='say'?<InspectorField label="Line"><input value={action.value||''} onChange={e=>onChange({...action,value:e.target.value})} placeholder="What should be said?"/></InspectorField>:action.type==='changeScene'?<><InspectorField label="Destination scene"><select value={action.value||''} onChange={e=>onChange({...action,value:e.target.value})}><option value="">Choose scene</option>{scenes.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></InspectorField><InspectorField label="Spawn point ID"><input value={action.targetId||'default'} onChange={e=>onChange({...action,targetId:e.target.value})}/></InspectorField></>:<><InspectorField label="Target">{opts?<select value={action.targetId||''} onChange={e=>onChange({...action,targetId:e.target.value})}><option value="">Choose target</option>{opts}</select>:<input value={action.targetId||''} onChange={e=>onChange({...action,targetId:e.target.value})} placeholder="flag / target"/>}</InspectorField>{!['showObject','hideObject','giveItem','removeItem','startDialogue'].includes(action.type)&&<InspectorField label="Value"><input value={action.value??''} onChange={e=>onChange({...action,value:e.target.value})} placeholder={action.type==='moveCharacter'?'x,y':action.type==='setVisualState'?'state name':'value'}/></InspectorField>}</>}</div>
 }
 
-function ActionEditor({ action, onChange, onDelete }) {
-  return (
-    <div className="logic-mini-row action-row">
-      <select value={action.type || 'say'} onChange={(e) => onChange({ ...action, type: e.target.value })}>
-        {ACTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
-      </select>
-      <input value={action.targetId || ''} onChange={(e) => onChange({ ...action, targetId: e.target.value })} placeholder="target / speaker" />
-      <input value={action.value ?? ''} onChange={(e) => onChange({ ...action, value: e.target.value })} placeholder="value / text / scene" />
-      <button className="icon-button" onClick={onDelete}>×</button>
-    </div>
-  );
-}
-
-export default function LogicEditor({ sceneId, logic, objects, onChange, onImport, onExport }) {
-  const [selectedRuleId, setSelectedRuleId] = useState(logic.rules[0]?.id || '');
-  const selected = logic.rules.find((rule) => rule.id === selectedRuleId) || null;
-
-  function updateRule(nextRule) {
-    onChange({ ...logic, rules: logic.rules.map((rule) => rule.id === nextRule.id ? nextRule : rule) });
-  }
-
-  function addRule() {
-    const rule = createRule();
-    onChange({ ...logic, rules: [...logic.rules, rule] });
-    setSelectedRuleId(rule.id);
-  }
-
-  function removeRule() {
-    if (!selected) return;
-    onChange({ ...logic, rules: logic.rules.filter((rule) => rule.id !== selected.id) });
-    setSelectedRuleId('');
-  }
-
-  return (
-    <div className="logic-layout">
-      <section className="logic-list-panel">
-        <div className="toolbar">
-          <div className="toolbar-group"><button className="primary-soft" onClick={addRule}>+ Rule</button></div>
-          <div className="toolbar-group"><button onClick={onImport}>Import logic</button><button onClick={onExport}>Export logic</button></div>
-        </div>
-        <div className="logic-file-label">scene.logic.{sceneId}.json</div>
-        <div className="rule-list">
-          {logic.rules.length === 0 && <div className="empty-panel">No logic rules yet. Add one or import a scene logic file.</div>}
-          {logic.rules.map((rule) => (
-            <button key={rule.id} className={`rule-card ${rule.id === selectedRuleId ? 'active' : ''}`} onClick={() => setSelectedRuleId(rule.id)}>
-              <span className="rule-event">{rule.event.type}</span>
-              <strong>{rule.name}</strong>
-              <small>{rule.event.targetId || 'scene-wide'} · {rule.conditions.length} conditions · {rule.actions.length} actions</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <aside className="logic-inspector inspector">
-        <div className="inspector-title">Rule builder</div>
-        {!selected ? <div className="empty-inspector">Select or create a rule.</div> : (
-          <>
-            <div className="object-title-row">
-              <div><strong>{selected.name}</strong><small>{selected.id}</small></div>
-              <button className="danger-ghost" onClick={removeRule}>Delete</button>
-            </div>
-            <InspectorField label="Rule name"><input value={selected.name} onChange={(e) => updateRule({ ...selected, name: e.target.value })} /></InspectorField>
-            <div className="inspector-subtitle">When</div>
-            <InspectorField label="Event">
-              <select value={selected.event.type} onChange={(e) => updateRule({ ...selected, event: { ...selected.event, type: e.target.value } })}>
-                {EVENT_TYPES.map((type) => <option key={type}>{type}</option>)}
-              </select>
-            </InspectorField>
-            <InspectorField label="Target object">
-              <select value={selected.event.targetId || ''} onChange={(e) => updateRule({ ...selected, event: { ...selected.event, targetId: e.target.value } })}>
-                <option value="">Scene-wide / none</option>
-                {objects.map((obj) => <option key={obj.id} value={obj.id}>{obj.name} ({obj.id})</option>)}
-              </select>
-            </InspectorField>
-            <InspectorField label="Verb / item">
-              <div className="split-fields">
-                <input value={selected.event.verb || ''} onChange={(e) => updateRule({ ...selected, event: { ...selected.event, verb: e.target.value } })} placeholder="verb" />
-                <input value={selected.event.itemId || ''} onChange={(e) => updateRule({ ...selected, event: { ...selected.event, itemId: e.target.value } })} placeholder="item id" />
-              </div>
-            </InspectorField>
-
-            <div className="inspector-divider" />
-            <div className="section-heading-row"><span className="inspector-subtitle">Conditions</span><button className="small-button" onClick={() => updateRule({ ...selected, conditions: [...selected.conditions, { left: 'flag', key: '', op: 'equals', value: 'true' }] })}>+ Condition</button></div>
-            {selected.conditions.length === 0 && <div className="linked-note">No conditions: this rule can always run when its event fires.</div>}
-            {selected.conditions.map((condition, index) => <ConditionEditor key={index} condition={condition} onChange={(next) => updateRule({ ...selected, conditions: selected.conditions.map((c, i) => i === index ? next : c) })} onDelete={() => updateRule({ ...selected, conditions: selected.conditions.filter((_, i) => i !== index) })} />)}
-
-            <div className="inspector-divider" />
-            <div className="section-heading-row"><span className="inspector-subtitle">Actions</span><button className="small-button" onClick={() => updateRule({ ...selected, actions: [...selected.actions, { type: 'say', targetId: '', value: '' }] })}>+ Action</button></div>
-            {selected.actions.length === 0 && <div className="linked-note">Actions execute from top to bottom.</div>}
-            {selected.actions.map((action, index) => <ActionEditor key={index} action={action} onChange={(next) => updateRule({ ...selected, actions: selected.actions.map((a, i) => i === index ? next : a) })} onDelete={() => updateRule({ ...selected, actions: selected.actions.filter((_, i) => i !== index) })} />)}
-          </>
-        )}
-      </aside>
-    </div>
-  );
+export default function LogicEditor({sceneId,logic,objects,items=[],globalVariables=[],scenes=[],characters=[],onChange,onImport,onExport}){
+ const [selectedRuleId,setSelectedRuleId]=useState(logic.rules[0]?.id||'');const selected=logic.rules.find(r=>r.id===selectedRuleId)||null;const allVariables=[...globalVariables,...(logic.variables||[])];
+ function updateRule(next){onChange({...logic,rules:logic.rules.map(r=>r.id===next.id?next:r)})}
+ function addRule(){const r=createRule();onChange({...logic,rules:[...logic.rules,r]});setSelectedRuleId(r.id)}
+ function removeRule(){if(!selected)return;onChange({...logic,rules:logic.rules.filter(r=>r.id!==selected.id)});setSelectedRuleId('')}
+ function addLocalVariable(){const id=`sceneVar${(logic.variables||[]).length+1}`;onChange({...logic,variables:[...(logic.variables||[]),{id,name:id,type:'boolean',initialValue:false}]})}
+ return <div className="logic-layout"><section className="logic-list-panel"><div className="toolbar"><div className="toolbar-group"><button className="primary-soft" onClick={addRule}>+ Rule</button><button onClick={addLocalVariable}>+ Scene variable</button></div><div className="toolbar-group"><button onClick={onImport}>Import logic</button><button onClick={onExport}>Export logic</button></div></div><div className="logic-file-label">scene.logic.{sceneId}.json</div>{(logic.variables||[]).length>0&&<div className="scene-variable-editor">{logic.variables.map((v,i)=><div className="scene-variable-row" key={v.id}><input value={v.id} onChange={e=>onChange({...logic,variables:logic.variables.map((x,j)=>j===i?{...x,id:e.target.value,name:e.target.value}:x)})}/><select value={v.type||'boolean'} onChange={e=>onChange({...logic,variables:logic.variables.map((x,j)=>j===i?{...x,type:e.target.value,initialValue:e.target.value==='boolean'?false:e.target.value==='number'?0:''}:x)})}><option>boolean</option><option>number</option><option>string</option></select>{v.type==='boolean'?<select value={String(v.initialValue??false)} onChange={e=>onChange({...logic,variables:logic.variables.map((x,j)=>j===i?{...x,initialValue:e.target.value==='true'}:x)})}><option value="false">false</option><option value="true">true</option></select>:<input type={v.type==='number'?'number':'text'} value={v.initialValue??''} onChange={e=>onChange({...logic,variables:logic.variables.map((x,j)=>j===i?{...x,initialValue:v.type==='number'?Number(e.target.value):e.target.value}:x)})}/>}<button className="icon-button" onClick={()=>onChange({...logic,variables:logic.variables.filter((_,j)=>j!==i)})}>×</button></div>)}</div>}<div className="rule-list">{logic.rules.length===0&&<div className="empty-panel">No logic rules yet. Add one or import a scene logic file.</div>}{logic.rules.map(r=><button key={r.id} className={`rule-card ${r.id===selectedRuleId?'active':''}`} onClick={()=>setSelectedRuleId(r.id)}><span className="rule-event">{r.event.type}</span><strong>{r.name}</strong><small>{r.event.targetId||'scene-wide'} · {r.conditions.length} conditions · {r.actions.length} actions</small></button>)}</div></section><aside className="logic-inspector inspector"><div className="inspector-title">Rule builder</div>{!selected?<div className="empty-inspector">Select or create a rule.</div>:<><div className="object-title-row"><div><strong>{selected.name}</strong><small>{selected.id}</small></div><button className="danger-ghost" onClick={removeRule}>Delete</button></div><InspectorField label="Rule name"><input value={selected.name} onChange={e=>updateRule({...selected,name:e.target.value})}/></InspectorField><div className="inspector-subtitle">When</div><InspectorField label="Event"><select value={selected.event.type} onChange={e=>updateRule({...selected,event:{...selected.event,type:e.target.value}})}>{EVENT_TYPES.map(t=><option key={t}>{t}</option>)}</select></InspectorField><InspectorField label="Target object"><select value={selected.event.targetId||''} onChange={e=>updateRule({...selected,event:{...selected.event,targetId:e.target.value}})}><option value="">Scene-wide / none</option>{objects.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></InspectorField><InspectorField label="Verb"><select value={selected.event.verb||''} onChange={e=>updateRule({...selected,event:{...selected.event,verb:e.target.value}})}><option value="">Any / none</option>{VERBS.map(v=><option key={v}>{v}</option>)}</select></InspectorField><InspectorField label="Inventory item"><select value={selected.event.itemId||''} onChange={e=>updateRule({...selected,event:{...selected.event,itemId:e.target.value}})}><option value="">Any / none</option>{items.map(i=><option key={i.id} value={i.id}>{i.name}</option>)}</select></InspectorField><div className="inspector-divider"/><div className="section-heading-row"><span className="inspector-subtitle">Conditions</span><button className="small-button" onClick={()=>updateRule({...selected,conditions:[...selected.conditions,{left:'flag',key:'',op:'equals',value:'true'}]})}>+ Condition</button></div>{selected.conditions.length===0&&<div className="linked-note">No conditions: this rule can always run when its event fires.</div>}{selected.conditions.map((c,i)=><ConditionEditor key={i} condition={c} items={items} variables={allVariables} onChange={next=>updateRule({...selected,conditions:selected.conditions.map((x,j)=>j===i?next:x)})} onDelete={()=>updateRule({...selected,conditions:selected.conditions.filter((_,j)=>j!==i)})}/>) }<div className="inspector-divider"/><div className="section-heading-row"><span className="inspector-subtitle">Actions</span><button className="small-button" onClick={()=>updateRule({...selected,actions:[...selected.actions,{type:'say',targetId:'',value:''}]})}>+ Action</button></div>{selected.actions.length===0&&<div className="linked-note">Actions execute from top to bottom.</div>}{selected.actions.map((a,i)=><ActionEditor key={i} action={a} objects={objects} items={items} variables={allVariables} scenes={scenes} characters={characters} onChange={next=>updateRule({...selected,actions:selected.actions.map((x,j)=>j===i?next:x)})} onDelete={()=>updateRule({...selected,actions:selected.actions.filter((_,j)=>j!==i)})}/>)}</>}</aside></div>
 }

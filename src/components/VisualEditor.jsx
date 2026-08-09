@@ -1,280 +1,52 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import InspectorField from './InspectorField.jsx';
-import { OBJECT_TYPES, VERBS, createObjectConfig } from '../lib/schema.js';
+import { OBJECT_TYPES, VERBS, createObjectConfig, createPolygon } from '../lib/schema.js';
 import { slugify } from '../lib/id.js';
 
-const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
 
-export default function VisualEditor({
-  sceneId,
-  visual,
-  objects,
-  assetUrls,
-  logic,
-  onChangeVisual,
-  onChangeObjects,
-  onChooseAsset,
-  onImport,
-  onExport,
-}) {
-  const [selectedId, setSelectedId] = useState(objects[0]?.id || '');
-  const [showHotspots, setShowHotspots] = useState(true);
-  const [zoom, setZoom] = useState(0.72);
-  const [newName, setNewName] = useState('New Prop');
-  const stageRef = useRef(null);
-
-  const selected = objects.find((item) => item.id === selectedId) || null;
-  const orderedObjects = useMemo(() => [...objects].sort((a, b) => a.transform.z - b.transform.z), [objects]);
-
-  function patchObject(id, patch) {
-    onChangeObjects(objects.map((obj) => obj.id === id ? { ...obj, ...patch } : obj));
+export default function VisualEditor({sceneId,meta,visual,objects,assetUrls,stateAssetUrls,logic,project,characters,gameUi,onChangeVisual,onChangeObjects,onChooseAsset,onChooseBackground,onChooseSceneAudio,onChangeMeta,onEnsureCharacter,onImport,onExport}){
+ const [selectedId,setSelectedId]=useState(objects[0]?.id||''); const [mode,setMode]=useState('objects'); const [selectedAreaId,setSelectedAreaId]=useState(''); const [showHotspots,setShowHotspots]=useState(true); const [showGrid,setShowGrid]=useState(true); const [snap,setSnap]=useState(false); const [zoom,setZoom]=useState(.65); const [newName,setNewName]=useState('New Prop'); const [failedAssets,setFailedAssets]=useState({}); const stageRef=useRef(null);
+ const selected=objects.find(o=>o.id===selectedId)||null; const ordered=useMemo(()=>[...objects].sort((a,b)=>a.transform.z-b.transform.z),[objects]);
+ const areas=mode==='walk'?visual.walkAreas:visual.depthAreas; const selectedArea=areas?.find(a=>a.id===selectedAreaId)||null;
+ useEffect(()=>{
+  function onKey(e){
+   if(mode!=='objects'||!selected||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+   if(e.key==='Delete'){e.preventDefault();removeSelected();return}
+   const step=e.shiftKey?10:1;const delta={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[e.key];
+   if(delta&&!selected.transform.locked){e.preventDefault();patchTransform(selected.id,{x:clamp(selected.transform.x+delta[0],0,visual.canvas.width-selected.transform.width),y:clamp(selected.transform.y+delta[1],0,visual.canvas.height-selected.transform.height)})}
+   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='d'){e.preventDefault();duplicate()}
   }
-
-  function patchTransform(id, patch) {
-    const obj = objects.find((item) => item.id === id);
-    if (!obj) return;
-    patchObject(id, { transform: { ...obj.transform, ...patch } });
-  }
-
-  function addObject(type = 'prop') {
-    let baseName = newName.trim() || 'New Object';
-    const baseId = slugify(baseName, 'object');
-    let id = baseId;
-    let suffix = 2;
-    while (objects.some((obj) => obj.id === id)) id = `${baseId}-${suffix++}`;
-    const object = { ...createObjectConfig(sceneId, baseName, type), id };
-    if (type === 'character') object.character = { characterId: id, displayName: baseName };
-    onChangeObjects([...objects, object]);
-    onChangeVisual({ ...visual, objectRefs: [...visual.objectRefs, id] });
-    setSelectedId(id);
-  }
-
-  function removeSelected() {
-    if (!selected) return;
-    onChangeObjects(objects.filter((obj) => obj.id !== selected.id));
-    onChangeVisual({ ...visual, objectRefs: visual.objectRefs.filter((id) => id !== selected.id) });
-    setSelectedId('');
-  }
-
-  function stagePoint(event) {
-    const rect = stageRef.current.getBoundingClientRect();
-    return {
-      x: (event.clientX - rect.left) / zoom,
-      y: (event.clientY - rect.top) / zoom,
-    };
-  }
-
-  function beginDrag(event, obj) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    setSelectedId(obj.id);
-    const start = stagePoint(event);
-    const origin = { x: obj.transform.x, y: obj.transform.y };
-    const move = (ev) => {
-      const point = stagePoint(ev);
-      patchTransform(obj.id, {
-        x: Math.round(clamp(origin.x + point.x - start.x, 0, visual.canvas.width - obj.transform.width)),
-        y: Math.round(clamp(origin.y + point.y - start.y, 0, visual.canvas.height - obj.transform.height)),
-      });
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  }
-
-  function beginResize(event, obj) {
-    event.stopPropagation();
-    event.preventDefault();
-    const start = stagePoint(event);
-    const origin = { width: obj.transform.width, height: obj.transform.height };
-    const move = (ev) => {
-      const point = stagePoint(ev);
-      patchTransform(obj.id, {
-        width: Math.max(16, Math.round(origin.width + point.x - start.x)),
-        height: Math.max(16, Math.round(origin.height + point.y - start.y)),
-      });
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  }
-
-  function updateHotspotAction(verb, key, value) {
-    const hotspot = selected.hotspot || { enabled: true, label: selected.name, actions: {} };
-    const existing = hotspot.actions?.[verb] || {};
-    patchObject(selected.id, {
-      hotspot: {
-        ...hotspot,
-        actions: {
-          ...hotspot.actions,
-          [verb]: { ...existing, [key]: value }
-        }
-      }
-    });
-  }
-
-  return (
-    <div className="editor-layout visual-editor-layout">
-      <section className="editor-main">
-        <div className="toolbar">
-          <div className="toolbar-group">
-            <input className="toolbar-name-input" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <button onClick={() => addObject('prop')}>+ Prop</button>
-            <button onClick={() => addObject('character')}>+ Character</button>
-            <button onClick={() => addObject('scenery')}>+ Scenery</button>
-            <button onClick={() => addObject('hotspot')}>+ Hotspot</button>
-            <button onClick={() => addObject('exit')}>+ Exit</button>
-          </div>
-          <div className="toolbar-group">
-            <button className={showHotspots ? 'active-tool' : ''} onClick={() => setShowHotspots((v) => !v)}>Hotspots</button>
-            <label className="zoom-control">Zoom <input type="range" min="0.35" max="1" step="0.05" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
-            <button onClick={onImport}>Import JSONs</button>
-            <button onClick={onExport}>Export visual</button>
-          </div>
-        </div>
-
-        <div className="stage-scroll">
-          <div
-            ref={stageRef}
-            className="scene-stage"
-            style={{
-              width: visual.canvas.width,
-              height: visual.canvas.height,
-              transform: `scale(${zoom})`,
-              transformOrigin: 'top left',
-              backgroundColor: visual.canvas.backgroundColor,
-              '--stage-zoom': zoom,
-            }}
-            onPointerDown={() => setSelectedId('')}
-          >
-            <div className="stage-grid" />
-            {orderedObjects.filter((obj) => obj.transform.visible).map((obj) => {
-              const t = obj.transform;
-              const isSelected = obj.id === selectedId;
-              return (
-                <div
-                  key={obj.id}
-                  className={`scene-object ${isSelected ? 'selected' : ''} ${obj.type === 'hotspot' ? 'hotspot-object' : ''}`}
-                  style={{ left: t.x, top: t.y, width: t.width, height: t.height, zIndex: t.z, opacity: t.opacity }}
-                  onPointerDown={(e) => { e.stopPropagation(); beginDrag(e, obj); }}
-                >
-                  {assetUrls[obj.id] ? (
-                    <img src={assetUrls[obj.id]} draggable="false" alt="" />
-                  ) : (
-                    <div className="object-placeholder">
-                      <span>{obj.name}</span>
-                      <small>{obj.type}</small>
-                    </div>
-                  )}
-                  {showHotspots && obj.hotspot?.enabled && <div className="hotspot-overlay"><span>{obj.hotspot.label || obj.name}</span></div>}
-                  {isSelected && <button className="resize-handle" onPointerDown={(e) => beginResize(e, obj)} aria-label="Resize" />}
-                </div>
-              );
-            })}
-            <div className="player-start" style={{ left: visual.playerStart.x - 9, top: visual.playerStart.y - 9 }} title="Player start" />
-          </div>
-        </div>
-      </section>
-
-      <aside className="inspector">
-        <div className="inspector-title">Visual inspector</div>
-        {!selected ? (
-          <>
-            <div className="inspector-subtitle">Scene canvas</div>
-            <div className="linked-note">Click an object to edit it, or use these scene-wide settings while nothing is selected.</div>
-            <div className="inspector-divider" />
-            <div className="transform-grid">
-              <InspectorField label="Width"><input type="number" value={visual.canvas.width} onChange={(e) => onChangeVisual({ ...visual, canvas: { ...visual.canvas, width: Number(e.target.value) } })} /></InspectorField>
-              <InspectorField label="Height"><input type="number" value={visual.canvas.height} onChange={(e) => onChangeVisual({ ...visual, canvas: { ...visual.canvas, height: Number(e.target.value) } })} /></InspectorField>
-            </div>
-            <InspectorField label="Canvas color"><input type="color" value={visual.canvas.backgroundColor} onChange={(e) => onChangeVisual({ ...visual, canvas: { ...visual.canvas, backgroundColor: e.target.value } })} /></InspectorField>
-            <div className="inspector-divider" />
-            <div className="inspector-subtitle">Player start</div>
-            <div className="transform-grid">
-              <InspectorField label="X"><input type="number" value={visual.playerStart.x} onChange={(e) => onChangeVisual({ ...visual, playerStart: { ...visual.playerStart, x: Number(e.target.value) } })} /></InspectorField>
-              <InspectorField label="Y"><input type="number" value={visual.playerStart.y} onChange={(e) => onChangeVisual({ ...visual, playerStart: { ...visual.playerStart, y: Number(e.target.value) } })} /></InspectorField>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="object-title-row">
-              <div>
-                <strong>{selected.name}</strong>
-                <small>{selected.id}.object.{sceneId}.json</small>
-              </div>
-              <button className="danger-ghost" onClick={removeSelected}>Delete</button>
-            </div>
-            <InspectorField label="Name"><input value={selected.name} onChange={(e) => patchObject(selected.id, { name: e.target.value, hotspot: { ...selected.hotspot, label: e.target.value } })} /></InspectorField>
-            <InspectorField label="Type">
-              <select value={selected.type} onChange={(e) => {
-                const type = e.target.value;
-                patchObject(selected.id, {
-                  type,
-                  character: type === 'character' ? (selected.character || { characterId: selected.id, displayName: selected.name }) : null,
-                  hotspot: { ...selected.hotspot, enabled: type !== 'scenery' }
-                });
-              }}>{OBJECT_TYPES.map((type) => <option key={type}>{type}</option>)}</select>
-            </InspectorField>
-            <div className="transform-grid">
-              {['x', 'y', 'width', 'height', 'z'].map((key) => (
-                <InspectorField key={key} label={key.toUpperCase()}>
-                  <input type="number" value={selected.transform[key]} onChange={(e) => patchTransform(selected.id, { [key]: Number(e.target.value) })} />
-                </InspectorField>
-              ))}
-              <InspectorField label="Opacity"><input type="number" min="0" max="1" step="0.05" value={selected.transform.opacity} onChange={(e) => patchTransform(selected.id, { opacity: Number(e.target.value) })} /></InspectorField>
-            </div>
-            <label className="checkbox-row"><input type="checkbox" checked={selected.transform.visible} onChange={(e) => patchTransform(selected.id, { visible: e.target.checked })} /> Visible</label>
-            <div className="inspector-divider" />
-            <div className="inspector-subtitle">Asset</div>
-            <div className="asset-path">{selected.asset?.path || 'No PNG assigned'}</div>
-            <button className="wide-button" onClick={() => onChooseAsset(selected.id)}>Replace PNG / image</button>
-
-            {selected.type === 'character' && (
-              <>
-                <div className="inspector-divider" />
-                <div className="inspector-subtitle">Character</div>
-                <InspectorField label="Character ID"><input value={selected.character?.characterId || ''} readOnly title="Stable scene-scoped ID" /></InspectorField>
-                <InspectorField label="Display name"><input value={selected.character?.displayName || ''} onChange={(e) => patchObject(selected.id, { character: { ...selected.character, displayName: e.target.value } })} /></InspectorField>
-                <div className="linked-note">This character will automatically appear in the Dialogues tab.</div>
-              </>
-            )}
-
-            <div className="inspector-divider" />
-            <div className="inspector-subtitle">Hotspot</div>
-            <label className="checkbox-row"><input type="checkbox" checked={!!selected.hotspot?.enabled} onChange={(e) => patchObject(selected.id, { hotspot: { ...selected.hotspot, enabled: e.target.checked } })} /> Enabled</label>
-            {selected.hotspot?.enabled && (
-              <div className="action-binding-list">
-                {VERBS.map((verb) => {
-                  const binding = selected.hotspot.actions?.[verb];
-                  return (
-                    <details key={verb} open={verb === 'talk' && selected.type === 'character'}>
-                      <summary>{verb}{binding?.ruleId || binding?.dialogueId ? ' •' : ''}</summary>
-                      <InspectorField label="Logic rule">
-                        <select value={binding?.ruleId || ''} onChange={(e) => updateHotspotAction(verb, 'ruleId', e.target.value)}>
-                          <option value="">No rule</option>
-                          {(logic?.rules || []).map((rule) => <option key={rule.id} value={rule.id}>{rule.name} ({rule.event.type})</option>)}
-                        </select>
-                      </InspectorField>
-                      {verb === 'talk' && <InspectorField label="Dialogue character">
-                        <select value={binding?.dialogueId || ''} onChange={(e) => updateHotspotAction(verb, 'dialogueId', e.target.value)}>
-                          <option value="">No dialogue</option>
-                          {objects.filter((obj) => obj.type === 'character' && obj.character).map((obj) => <option key={obj.character.characterId} value={obj.character.characterId}>{obj.character.displayName || obj.name}</option>)}
-                        </select>
-                      </InspectorField>}
-                    </details>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-      </aside>
-    </div>
-  );
+  window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+ },[mode,selected,visual]);
+ function quantize(n){return snap?Math.round(n/10)*10:Math.round(n)}
+ function patchObject(id,patch){onChangeObjects(objects.map(o=>o.id===id?{...o,...patch}:o))}
+ function patchTransform(id,patch){const o=objects.find(x=>x.id===id);if(!o)return;patchObject(id,{transform:{...o.transform,...patch}})}
+ function addObject(type){let baseName=newName.trim()||'New Object';const baseId=slugify(baseName,'object');let id=baseId,suffix=2;while(objects.some(o=>o.id===id))id=`${baseId}-${suffix++}`;const o={...createObjectConfig(sceneId,baseName,type),id};if(type==='character'){o.character={characterId:id,displayName:baseName,role:'npc',walkSpeed:180};onEnsureCharacter?.(id,baseName)}if(type==='exit')o.exit={destinationSceneId:'',spawnPointId:'default',transition:'fade',walkFirst:true};onChangeObjects([...objects,o]);onChangeVisual({...visual,objectRefs:[...visual.objectRefs,id]});setSelectedId(id);setMode('objects')}
+ function duplicate(){if(!selected)return;let id=`${selected.id}-copy`,n=2;while(objects.some(o=>o.id===id))id=`${selected.id}-copy-${n++}`;const copy={...structuredClone(selected),id,name:`${selected.name} copy`,transform:{...selected.transform,x:selected.transform.x+20,y:selected.transform.y+20},hotspot:{...selected.hotspot,label:`${selected.name} copy`},character:selected.character?{...selected.character,characterId:id,displayName:`${selected.name} copy`}:null};if(copy.character)onEnsureCharacter?.(id,copy.name);onChangeObjects([...objects,copy]);onChangeVisual({...visual,objectRefs:[...visual.objectRefs,id]});setSelectedId(id)}
+ function removeSelected(){if(!selected)return;onChangeObjects(objects.filter(o=>o.id!==selected.id));onChangeVisual({...visual,objectRefs:visual.objectRefs.filter(id=>id!==selected.id),player:visual.player.characterObjectId===selected.id?{...visual.player,characterObjectId:''}:visual.player});setSelectedId('')}
+ function stagePoint(e){const r=stageRef.current.getBoundingClientRect();return{x:(e.clientX-r.left)/zoom,y:(e.clientY-r.top)/zoom}}
+ function beginDrag(e,o){if(mode!=='objects'||e.button!==0||o.transform.locked)return;e.preventDefault();setSelectedId(o.id);const s=stagePoint(e),orig={x:o.transform.x,y:o.transform.y};const move=ev=>{const p=stagePoint(ev);patchTransform(o.id,{x:quantize(clamp(orig.x+p.x-s.x,0,visual.canvas.width-o.transform.width)),y:quantize(clamp(orig.y+p.y-s.y,0,visual.canvas.height-o.transform.height))})};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)}
+ function beginResize(e,o){e.stopPropagation();e.preventDefault();const s=stagePoint(e),orig={width:o.transform.width,height:o.transform.height},ratio=orig.width/orig.height;const move=ev=>{const p=stagePoint(ev);let w=Math.max(16,quantize(orig.width+p.x-s.x)),h=Math.max(16,quantize(orig.height+p.y-s.y));if(o.transform.lockAspect){h=Math.max(16,Math.round(w/ratio))}patchTransform(o.id,{width:w,height:h})};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)}
+ function updateHotspotAction(verb,key,value){const hotspot=selected.hotspot||{enabled:true,label:selected.name,actions:{}};const existing=hotspot.actions?.[verb]||{};patchObject(selected.id,{hotspot:{...hotspot,actions:{...hotspot.actions,[verb]:{...existing,[key]:value}}}})}
+ function updateAreas(next){onChangeVisual(mode==='walk'?{...visual,walkAreas:next}:{...visual,depthAreas:next})}
+ function addArea(){const a=createPolygon(mode);updateAreas([...(areas||[]),a]);setSelectedAreaId(a.id)}
+ function stageClick(e){if(mode==='objects'){if(e.target===stageRef.current||e.target.className==='stage-grid'||e.target.classList?.contains('editor-background'))setSelectedId('');return}if((mode==='walk'||mode==='depth')&&selectedArea){const p=stagePoint(e);updateAreas(areas.map(a=>a.id===selectedArea.id?{...a,points:[...a.points,{x:quantize(p.x),y:quantize(p.y)}]}:a))}}
+ function movePolygonPoint(e,area,index){e.stopPropagation();e.preventDefault();const move=ev=>{const p=stagePoint(ev);updateAreas(areas.map(a=>a.id===area.id?{...a,points:a.points.map((pt,i)=>i===index?{x:quantize(p.x),y:quantize(p.y)}:pt)}:a))};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)}
+ function beginInteractionDrag(e,obj){e.stopPropagation();e.preventDefault();const move=ev=>{const p=stagePoint(ev);patchObject(obj.id,{interactionPoint:{...obj.interactionPoint,x:quantize(p.x),y:quantize(p.y)}})};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)}
+ function beginPlayerStartDrag(e){e.stopPropagation();e.preventDefault();const move=ev=>{const p=stagePoint(ev);const start={x:quantize(p.x),y:quantize(p.y)};onChangeVisual({...visual,player:{...visual.player,start},playerStart:start})};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)}
+ function beginSpawnDrag(e,spawn,index){e.stopPropagation();e.preventDefault();const move=ev=>{const p=stagePoint(ev);onChangeVisual({...visual,spawnPoints:visual.spawnPoints.map((s,i)=>i===index?{...s,x:quantize(p.x),y:quantize(p.y)}:s)})};const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',up)}
+ function activeAssetUrl(obj){const state=obj.asset?.state||'default';const path=obj.asset?.states?.[state]||obj.asset?.path||'';return stateAssetUrls?.[`${obj.id}:${path}`]||assetUrls[obj.id]||''}
+ function setStatePath(state,path){const states={...(selected.asset?.states||{}),[state]:path};patchObject(selected.id,{asset:{...selected.asset,states,path:state===(selected.asset?.state||'default')?path:selected.asset.path}})}
+ function addState(){const name=window.prompt('State name','new-state')?.trim();if(!name)return;setStatePath(slugify(name,'state'),'')}
+ function removeState(state){if(state==='default')return;const states={...selected.asset.states};delete states[state];patchObject(selected.id,{asset:{...selected.asset,states,state:selected.asset.state===state?'default':selected.asset.state}})}
+ const vp=gameUi?.viewport||{width:1280,height:700};
+ return <div className="editor-layout visual-editor-layout"><section className="editor-main"><div className="visual-modebar"><div className="segmented">{[['objects','Objects'],['walk','Walk Areas'],['depth','Depth Areas'],['camera','Camera']].map(([id,label])=><button key={id} className={mode===id?'active':''} onClick={()=>{setMode(id);setSelectedAreaId('')}}>{label}</button>)}</div>{mode==='objects'?<div className="toolbar-group"><select className="object-jump-select" value={selectedId} onChange={e=>setSelectedId(e.target.value)}><option value="">Select object…</option>{[...objects].sort((a,b)=>b.transform.z-a.transform.z).map(o=><option key={o.id} value={o.id}>{o.name} · Z{o.transform.z}{o.transform.visible?'':' · hidden'}</option>)}</select><input className="toolbar-name-input" value={newName} onChange={e=>setNewName(e.target.value)}/><button onClick={()=>addObject('prop')}>+ Prop</button><button onClick={()=>addObject('character')}>+ Character</button><button onClick={()=>addObject('scenery')}>+ Scenery</button><button onClick={()=>addObject('hotspot')}>+ Hotspot</button><button onClick={()=>addObject('exit')}>+ Exit</button></div>:mode==='walk'||mode==='depth'?<button className="primary-soft" onClick={addArea}>+ {mode==='walk'?'Walk':'Depth'} area</button>:<span className="muted tiny">Viewport inherited from Game UI: {vp.width} × {vp.height}</span>}</div><div className="toolbar"><div className="toolbar-group"><button className={showHotspots?'active-tool':''} onClick={()=>setShowHotspots(v=>!v)}>Hotspots</button><button className={showGrid?'active-tool':''} onClick={()=>setShowGrid(v=>!v)}>Grid</button><button className={snap?'active-tool':''} onClick={()=>setSnap(v=>!v)}>Snap 10</button><label className="zoom-control">Zoom <input type="range" min=".3" max="1" step=".05" value={zoom} onChange={e=>setZoom(Number(e.target.value))}/></label></div><div className="toolbar-group"><button onClick={onImport}>Import JSONs</button><button onClick={onExport}>Export visual</button></div></div><div className="stage-scroll"><div ref={stageRef} className="scene-stage" style={{width:visual.canvas.width,height:visual.canvas.height,transform:`scale(${zoom})`,transformOrigin:'top left',backgroundColor:visual.canvas.backgroundColor,'--stage-zoom':zoom}} onPointerDown={stageClick}>
+ {visual.background?.path&&assetUrls.__background?<img className={`editor-background fit-${visual.background.fit||'stretch'}`} src={assetUrls.__background} alt="" draggable="false"/>:null}{showGrid&&<div className="stage-grid"/>}
+ <svg className={`polygon-overlay mode-${mode}`} width={visual.canvas.width} height={visual.canvas.height}>{(visual.walkAreas||[]).map(a=><g key={a.id} className={`walk-polygon ${mode==='walk'&&a.id===selectedAreaId?'selected':''}`} onPointerDown={e=>{e.stopPropagation();if(mode==='walk')setSelectedAreaId(a.id)}}><polygon points={a.points.map(p=>`${p.x},${p.y}`).join(' ')}/>{mode==='walk'&&a.id===selectedAreaId&&a.points.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="7" onPointerDown={e=>movePolygonPoint(e,a,i)}/>)}</g>)}{(visual.depthAreas||[]).map(a=><g key={a.id} className={`depth-polygon ${mode==='depth'&&a.id===selectedAreaId?'selected':''}`} onPointerDown={e=>{e.stopPropagation();if(mode==='depth')setSelectedAreaId(a.id)}}><polygon points={a.points.map(p=>`${p.x},${p.y}`).join(' ')}/><text x={a.points[0]?.x||0} y={(a.points[0]?.y||0)-8}>Z {a.z}</text>{mode==='depth'&&a.id===selectedAreaId&&a.points.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="7" onPointerDown={e=>movePolygonPoint(e,a,i)}/>)}</g>)}</svg>
+ {ordered.filter(o=>o.transform.visible).map(o=>{const t=o.transform,isSelected=o.id===selectedId,url=activeAssetUrl(o),failed=url&&failedAssets[o.id]===url;return <div key={o.id} className={`scene-object ${isSelected?'selected':''} ${o.type==='hotspot'?'hotspot-object':''} ${o.transform.locked?'locked':''}`} style={{left:t.x,top:t.y,width:t.width,height:t.height,zIndex:t.z,opacity:t.opacity,transform:t.flipX?'scaleX(-1)':'none'}} onPointerDown={e=>{if(mode==='objects'){e.stopPropagation();beginDrag(e,o)}}}>{url&&!failed?<img key={url} src={url} draggable="false" alt="" onError={()=>setFailedAssets(c=>({...c,[o.id]:url}))}/>:<div className={`object-placeholder ${failed?'asset-error-placeholder':''}`}><span>{failed?'IMAGE COULD NOT BE READ':o.name}</span><small>{o.type}</small></div>}{showHotspots&&o.hotspot?.enabled&&<div className="hotspot-overlay"><span>{o.hotspot.label||o.name}</span></div>}{mode==='objects'&&isSelected&&<><button className="resize-handle" onPointerDown={e=>beginResize(e,o)}/><div className="interaction-marker" style={{left:(o.interactionPoint?.x||0)-t.x-8,top:(o.interactionPoint?.y||0)-t.y-8}} title="Interaction point" onPointerDown={e=>beginInteractionDrag(e,o)}/></>}</div>})}
+ <div className="player-start" style={{left:(visual.player?.start?.x??visual.playerStart.x)-9,top:(visual.player?.start?.y??visual.playerStart.y)-9}} title="Player start" onPointerDown={beginPlayerStartDrag}/>{(visual.spawnPoints||[]).map((spawn,index)=><div key={spawn.id} className="spawn-marker" style={{left:spawn.x-7,top:spawn.y-7}} title={spawn.id} onPointerDown={e=>beginSpawnDrag(e,spawn,index)}><span>{spawn.id}</span></div>)}<div className="camera-frame" style={{left:visual.viewport.startX||0,top:visual.viewport.startY||0,width:vp.width,height:vp.height,display:mode==='camera'?'block':'none'}}><span>START VIEWPORT</span></div>
+ </div></div></section><aside className="inspector"><div className="inspector-title">Visual inspector</div>
+ {mode==='camera'?<><div className="inspector-subtitle">Camera</div><InspectorField label="Mode"><select value={visual.viewport.cameraMode} onChange={e=>onChangeVisual({...visual,viewport:{...visual.viewport,cameraMode:e.target.value}})}><option value="fixed">fixed</option><option value="follow">follow player</option><option value="manual">manual</option></select></InspectorField><div className="transform-grid"><InspectorField label="Start X"><input type="number" value={visual.viewport.startX} onChange={e=>onChangeVisual({...visual,viewport:{...visual.viewport,startX:Number(e.target.value)}})}/></InspectorField><InspectorField label="Start Y"><input type="number" value={visual.viewport.startY} onChange={e=>onChangeVisual({...visual,viewport:{...visual.viewport,startY:Number(e.target.value)}})}/></InspectorField></div><div className="transform-grid"><InspectorField label="Deadzone X"><input type="number" value={visual.viewport.deadZoneX} onChange={e=>onChangeVisual({...visual,viewport:{...visual.viewport,deadZoneX:Number(e.target.value)}})}/></InspectorField><InspectorField label="Deadzone Y"><input type="number" value={visual.viewport.deadZoneY} onChange={e=>onChangeVisual({...visual,viewport:{...visual.viewport,deadZoneY:Number(e.target.value)}})}/></InspectorField></div><div className="inspector-divider"/><div className="inspector-subtitle">Camera bounds</div><div className="transform-grid">{['x','y','width','height'].map(k=><InspectorField key={k} label={k}><input type="number" value={visual.viewport.bounds?.[k]??0} onChange={e=>onChangeVisual({...visual,viewport:{...visual.viewport,bounds:{...visual.viewport.bounds,[k]:Number(e.target.value)}}})}/></InspectorField>)}</div></>: (mode==='walk'||mode==='depth')?<><div className="inspector-subtitle">{mode==='walk'?'Walk areas':'Depth areas'}</div><div className="area-list">{(areas||[]).map(a=><button key={a.id} className={selectedAreaId===a.id?'active':''} onClick={()=>setSelectedAreaId(a.id)}><strong>{a.name}</strong><small>{a.points.length} points{mode==='depth'?` · Z ${a.z}`:''}</small></button>)}</div>{selectedArea&&<><div className="inspector-divider"/><InspectorField label="Name"><input value={selectedArea.name} onChange={e=>updateAreas(areas.map(a=>a.id===selectedArea.id?{...a,name:e.target.value}:a))}/></InspectorField>{mode==='depth'&&<InspectorField label="Actor Z"><input type="number" value={selectedArea.z} onChange={e=>updateAreas(areas.map(a=>a.id===selectedArea.id?{...a,z:Number(e.target.value)}:a))}/></InspectorField>}<label className="checkbox-row"><input type="checkbox" checked={selectedArea.enabled!==false} onChange={e=>updateAreas(areas.map(a=>a.id===selectedArea.id?{...a,enabled:e.target.checked}:a))}/> Enabled</label><button className="wide-button" onClick={()=>updateAreas(areas.map(a=>a.id===selectedArea.id?{...a,points:[]}:a))}>Clear points</button><button className="wide-button danger-ghost" onClick={()=>{updateAreas(areas.filter(a=>a.id!==selectedArea.id));setSelectedAreaId('')}}>Delete area</button><div className="linked-note">Select this area, then click the scene to add polygon points. Drag point handles to refine it.</div></>}</>:!selected?<><div className="inspector-subtitle">Scene canvas</div><div className="transform-grid"><InspectorField label="Width"><input type="number" value={visual.canvas.width} onChange={e=>onChangeVisual({...visual,canvas:{...visual.canvas,width:Number(e.target.value)},viewport:{...visual.viewport,bounds:{...visual.viewport.bounds,width:Number(e.target.value)}}})}/></InspectorField><InspectorField label="Height"><input type="number" value={visual.canvas.height} onChange={e=>onChangeVisual({...visual,canvas:{...visual.canvas,height:Number(e.target.value)},viewport:{...visual.viewport,bounds:{...visual.viewport.bounds,height:Number(e.target.value)}}})}/></InspectorField></div><InspectorField label="Canvas color"><input type="color" value={visual.canvas.backgroundColor} onChange={e=>onChangeVisual({...visual,canvas:{...visual.canvas,backgroundColor:e.target.value}})}/></InspectorField><div className="inspector-divider"/><div className="inspector-subtitle">Scene background</div><div className="asset-path">{visual.background?.path||'No background image'}</div><button className="wide-button" onClick={onChooseBackground}>Choose background image</button><InspectorField label="Fit"><select value={visual.background?.fit||'stretch'} onChange={e=>onChangeVisual({...visual,background:{...visual.background,fit:e.target.value}})}><option>stretch</option><option>contain</option><option>cover</option><option>native</option></select></InspectorField><div className="inspector-divider"/><div className="inspector-subtitle">Scene audio</div><div className="audio-row"><span>Music</span><code>{meta.audio?.music||'—'}</code><button onClick={()=>onChooseSceneAudio('music')}>Choose</button></div><div className="audio-row"><span>Ambient</span><code>{meta.audio?.ambient||'—'}</code><button onClick={()=>onChooseSceneAudio('ambient')}>Choose</button></div><div className="inspector-divider"/><div className="inspector-subtitle">Playable character</div><InspectorField label="Scene player"><select value={visual.player?.characterObjectId||''} onChange={e=>onChangeVisual({...visual,player:{...visual.player,characterObjectId:e.target.value}})}><option value="">Auto / none</option>{objects.filter(o=>o.type==='character').map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></InspectorField><div className="transform-grid"><InspectorField label="Start X"><input type="number" value={visual.player?.start?.x??0} onChange={e=>onChangeVisual({...visual,player:{...visual.player,start:{...visual.player.start,x:Number(e.target.value)}},playerStart:{...visual.playerStart,x:Number(e.target.value)}})}/></InspectorField><InspectorField label="Start Y"><input type="number" value={visual.player?.start?.y??0} onChange={e=>onChangeVisual({...visual,player:{...visual.player,start:{...visual.player.start,y:Number(e.target.value)}},playerStart:{...visual.playerStart,y:Number(e.target.value)}})}/></InspectorField></div><InspectorField label="Start facing"><select value={visual.player?.facing||'right'} onChange={e=>onChangeVisual({...visual,player:{...visual.player,facing:e.target.value}})}><option>left</option><option>right</option><option>up</option><option>down</option></select></InspectorField><div className="inspector-divider"/><div className="section-heading-row"><span className="inspector-subtitle">Spawn points</span><button className="small-button" onClick={()=>onChangeVisual({...visual,spawnPoints:[...(visual.spawnPoints||[]),{id:`spawn-${(visual.spawnPoints||[]).length+1}`,name:'New spawn',x:visual.player.start.x,y:visual.player.start.y,facing:'right'}]})}>+ Spawn</button></div>{(visual.spawnPoints||[]).map((s,i)=><div className="spawn-row" key={s.id}><input value={s.id} onChange={e=>onChangeVisual({...visual,spawnPoints:visual.spawnPoints.map((x,j)=>j===i?{...x,id:slugify(e.target.value,'spawn')}:x)})}/><input type="number" value={s.x} onChange={e=>onChangeVisual({...visual,spawnPoints:visual.spawnPoints.map((x,j)=>j===i?{...x,x:Number(e.target.value)}:x)})}/><input type="number" value={s.y} onChange={e=>onChangeVisual({...visual,spawnPoints:visual.spawnPoints.map((x,j)=>j===i?{...x,y:Number(e.target.value)}:x)})}/><select value={s.facing||'right'} onChange={e=>onChangeVisual({...visual,spawnPoints:visual.spawnPoints.map((x,j)=>j===i?{...x,facing:e.target.value}:x)})}><option>left</option><option>right</option><option>up</option><option>down</option></select><button className="icon-button" disabled={s.id==='default'} onClick={()=>onChangeVisual({...visual,spawnPoints:visual.spawnPoints.filter((_,j)=>j!==i)})}>×</button></div>)}</>:<><div className="object-title-row"><div><strong>{selected.name}</strong><small>{selected.id}.object.{sceneId}.json</small></div><div className="row-actions"><button className="small-button" onClick={duplicate}>Duplicate</button><button className="danger-ghost" onClick={removeSelected}>Delete</button></div></div><InspectorField label="Name"><input value={selected.name} onChange={e=>patchObject(selected.id,{name:e.target.value,hotspot:{...selected.hotspot,label:e.target.value}})}/></InspectorField><InspectorField label="Type"><select value={selected.type} onChange={e=>{const type=e.target.value;const char=type==='character'?(selected.character||{characterId:selected.id,displayName:selected.name,role:'npc',walkSpeed:180}):null;if(char)onEnsureCharacter?.(char.characterId,char.displayName);patchObject(selected.id,{type,character:char,exit:type==='exit'?(selected.exit||{destinationSceneId:'',spawnPointId:'default',transition:'fade',walkFirst:true}):null,hotspot:{...selected.hotspot,enabled:type!=='scenery'}})}}>{OBJECT_TYPES.map(t=><option key={t}>{t}</option>)}</select></InspectorField><div className="transform-grid">{['x','y','width','height','z'].map(k=><InspectorField key={k} label={k.toUpperCase()}><input type="number" value={selected.transform[k]} onChange={e=>patchTransform(selected.id,{[k]:Number(e.target.value)})}/></InspectorField>)}<InspectorField label="Opacity"><input type="number" min="0" max="1" step=".05" value={selected.transform.opacity} onChange={e=>patchTransform(selected.id,{opacity:Number(e.target.value)})}/></InspectorField></div><div className="checkbox-grid"><label className="checkbox-row"><input type="checkbox" checked={selected.transform.visible} onChange={e=>patchTransform(selected.id,{visible:e.target.checked})}/> Visible</label><label className="checkbox-row"><input type="checkbox" checked={!!selected.transform.flipX} onChange={e=>patchTransform(selected.id,{flipX:e.target.checked})}/> Flip X</label><label className="checkbox-row"><input type="checkbox" checked={!!selected.transform.lockAspect} onChange={e=>patchTransform(selected.id,{lockAspect:e.target.checked})}/> Lock ratio</label><label className="checkbox-row"><input type="checkbox" checked={!!selected.transform.locked} onChange={e=>patchTransform(selected.id,{locked:e.target.checked})}/> Lock object</label></div><InspectorField label="Anchor"><select value={selected.transform.anchor||'top-left'} onChange={e=>{const val=e.target.value;const coords=val==='bottom-center'?{anchorX:.5,anchorY:1}:val==='center'?{anchorX:.5,anchorY:.5}:{anchorX:0,anchorY:0};patchTransform(selected.id,{anchor:val,...coords})}}><option value="top-left">top-left</option><option value="center">center</option><option value="bottom-center">bottom-center / feet</option><option value="custom">custom</option></select></InspectorField><div className="inspector-divider"/><div className="section-heading-row"><span className="inspector-subtitle">Visual states</span><button className="small-button" onClick={addState}>+ State</button></div>{Object.keys(selected.asset?.states||{default:''}).map(state=><div className="asset-state-row" key={state}><label><input type="radio" checked={(selected.asset?.state||'default')===state} onChange={()=>patchObject(selected.id,{asset:{...selected.asset,state,path:selected.asset.states[state]||selected.asset.path}})}/>{state}</label><code>{selected.asset.states[state]||'No image'}</code><button onClick={()=>onChooseAsset(selected.id,state)}>Image</button>{state!=='default'&&<button className="icon-button" onClick={()=>removeState(state)}>×</button>}</div>)}<div className="inspector-divider"/><div className="inspector-subtitle">Interaction point</div><div className="transform-grid"><InspectorField label="X"><input type="number" value={selected.interactionPoint?.x||0} onChange={e=>patchObject(selected.id,{interactionPoint:{...selected.interactionPoint,x:Number(e.target.value)}})}/></InspectorField><InspectorField label="Y"><input type="number" value={selected.interactionPoint?.y||0} onChange={e=>patchObject(selected.id,{interactionPoint:{...selected.interactionPoint,y:Number(e.target.value)}})}/></InspectorField><InspectorField label="Facing"><select value={selected.interactionPoint?.facing||'right'} onChange={e=>patchObject(selected.id,{interactionPoint:{...selected.interactionPoint,facing:e.target.value}})}><option>left</option><option>right</option><option>up</option><option>down</option></select></InspectorField></div>{selected.type==='character'&&<><div className="inspector-divider"/><div className="inspector-subtitle">Character</div><InspectorField label="Definition"><select value={selected.character?.characterId||''} onChange={e=>{const c=characters.find(x=>x.id===e.target.value);patchObject(selected.id,{character:{...selected.character,characterId:e.target.value,displayName:c?.name||selected.name,role:c?.playable?'playable':selected.character?.role}})}}><option value="">Scene-only character</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></InspectorField><InspectorField label="Role"><select value={selected.character?.role||'npc'} onChange={e=>{const role=e.target.value;patchObject(selected.id,{character:{...selected.character,role}});if(role==='playable')onChangeVisual({...visual,player:{...visual.player,characterObjectId:selected.id}})}}><option value="npc">NPC</option><option value="playable">Playable character</option></select></InspectorField><InspectorField label="Walk speed"><input type="number" value={selected.character?.walkSpeed||180} onChange={e=>patchObject(selected.id,{character:{...selected.character,walkSpeed:Number(e.target.value)}})}/></InspectorField></>}{selected.type==='exit'&&<><div className="inspector-divider"/><div className="inspector-subtitle">Exit</div><InspectorField label="Destination"><select value={selected.exit?.destinationSceneId||''} onChange={e=>patchObject(selected.id,{exit:{...selected.exit,destinationSceneId:e.target.value}})}><option value="">No destination</option>{project.scenes.filter(s=>s.id!==sceneId).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></InspectorField><InspectorField label="Destination spawn"><input value={selected.exit?.spawnPointId||'default'} onChange={e=>patchObject(selected.id,{exit:{...selected.exit,spawnPointId:e.target.value}})}/></InspectorField><InspectorField label="Transition"><select value={selected.exit?.transition||'fade'} onChange={e=>patchObject(selected.id,{exit:{...selected.exit,transition:e.target.value}})}><option>fade</option><option>instant</option></select></InspectorField></>}<div className="inspector-divider"/><div className="inspector-subtitle">Hotspot</div><label className="checkbox-row"><input type="checkbox" checked={!!selected.hotspot?.enabled} onChange={e=>patchObject(selected.id,{hotspot:{...selected.hotspot,enabled:e.target.checked}})}/> Enabled</label>{selected.hotspot?.enabled&&<div className="action-binding-list">{VERBS.map(verb=>{const b=selected.hotspot.actions?.[verb];return <details key={verb} open={verb==='talk'&&selected.type==='character'}><summary>{verb}{b?.ruleId||b?.dialogueId?' •':''}</summary><InspectorField label="Logic rule"><select value={b?.ruleId||''} onChange={e=>updateHotspotAction(verb,'ruleId',e.target.value)}><option value="">No rule</option>{(logic?.rules||[]).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></InspectorField>{verb==='talk'&&<InspectorField label="Dialogue"><select value={b?.dialogueId||''} onChange={e=>updateHotspotAction(verb,'dialogueId',e.target.value)}><option value="">No dialogue</option>{objects.filter(o=>o.type==='character'&&o.character).map(o=><option key={o.character.characterId} value={o.character.characterId}>{o.character.displayName||o.name}</option>)}</select></InspectorField>}</details>})}</div>}<InspectorField label="Notes"><textarea rows="3" value={selected.notes||''} onChange={e=>patchObject(selected.id,{notes:e.target.value})}/></InspectorField></>}
+ </aside></div>
 }

@@ -1,84 +1,92 @@
-SCEMQ v0.1.0
+SCEMQ v0.2.0 — Runtime Foundation
 Script Creation Engine for Mara Quibble
 
-Purpose
-- Standalone reusable authoring engine for scene-based point-and-click adventure projects.
-- SCEMQ itself is not tied to Mara Quibble; Mara can later be converted into a SCEMQ project.
+SCEMQ is a reusable, game-agnostic authoring engine for classic scene-based point-and-click adventures.
+Mara Quibble is intended to become its first converted game, but no Mara-specific assumptions are built into the engine.
 
-Core workflow
-1. Run SCEMQ locally in Chrome or Edge.
-2. Load an existing project folder or choose an empty folder and create a project.
-3. Create/open scenes from the project scene list.
-4. Author each scene through exactly three main tabs:
-   - Visual Config
-   - Logic
-   - Dialogues
-5. Changes auto-save into modular scene-scoped JSON files in the chosen local project folder.
+PROJECT-LEVEL AUTHORING
+- Load/create local projects through Chrome/Edge File System Access API.
+- Scenes list with new-scene creation.
+- Characters library with playable flag, walk speed, facing and portrait/idle/walk asset slots.
+- Inventory library with item image, description, persistence, starting ownership and stackable flag.
+- Game UI visual editor:
+  - game screen size
+  - persistent viewport rectangle
+  - draggable/resizable verb buttons, inventory, status text, buttons, panels, text and images
+  - button actions (select verb, save, load, hotspots, pause, custom rule)
+  - inventory rows/columns/slot sizing/scroll direction
+  - optional per-verb cursor images
+- Global variables editor.
+- Runtime settings editor.
+- Import/export for project characters, inventory items, UI, variables and settings.
 
-Generated project file structure
-scemq.project.json
-scenes/
-  scene1/
-    scene.meta.scene1.json
-    scene.visual.scene1.json
-    scene.logic.scene1.json
-    objects/
-      <object-id>.object.scene1.json
-    dialogues/
-      <character-id>.dialogue.scene1.json
-    assets/
-      <scene image files>
+SCENE AUTHORING
+Every scene retains exactly three authoring tabs:
+1. Visual Config
+2. Logic
+3. Dialogues
 
-Implemented in v0.1.0
-- Load project folder.
-- Create project in selected local folder.
-- Scene list and new-scene creation.
-- Scene-scoped modular file naming.
-- Direct local file writes via browser File System Access API.
-- Auto-save after edits.
-- Visual Config editor:
-  - add prop/character/scenery
-  - move objects by drag
-  - resize objects
-  - exact X/Y/width/height/Z/opacity controls
-  - show/hide object
-  - replace image and copy it into scene assets
-  - enable/configure hotspots
-  - associate verbs with logic rule IDs
-  - associate Talk with dialogue character IDs
-  - scene canvas settings stored in scene visual file
-  - per-object configuration stored in separate object files
-- Logic editor:
-  - rule list
-  - events
-  - target objects
-  - conditions
-  - ordered actions
-  - import/export scene.logic JSON
-- Dialogue editor:
-  - automatically lists objects tagged as characters
-  - one dialogue file per character per scene
-  - draggable visual dialogue nodes
-  - entry node
-  - editable speaker/line
-  - player choices and node connections
-  - choice condition field
-  - import/export character dialogue JSON
-- Visual import/export exchange package for collaboration while retaining modular local files.
-- Missing image assets render as lightweight placeholders.
+VISUAL CONFIG
+- Dedicated background image separate from objects.
+- Canvas width/height and background color.
+- Props, scenery, characters, hotspots and exits.
+- Drag, resize, duplicate, lock, flip, opacity, visibility and Z.
+- Aspect-ratio lock, grid visibility and 10px snap.
+- Keyboard arrows (Shift = 10px), Delete and Ctrl/Cmd+D duplicate.
+- Object anchors including bottom-center/feet.
+- Object visual states with separate images (broken/repaired, open/closed, etc.).
+- Hotspot verb -> logic rule / dialogue bindings.
+- Interaction walk-to point + facing.
+- Character -> project character definition and NPC/playable role.
+- Scene player selection and start position.
+- Named spawn points.
+- Exit destination scene + destination spawn + transition type.
+- Walk-area polygon editor with draggable vertices.
+- Depth-area polygon editor assigning actor Z by feet position.
+- Per-scene camera mode, start position, dead zone and bounds.
+- Optional scene music and ambient audio.
 
-Browser requirement
+LOGIC
+- Scene-scoped rule file.
+- Editable scene variables plus global variables.
+- Events, object target, verb and inventory-item filters.
+- Conditions for flags, variables and inventory ownership.
+- Ordered actions with dropdown-driven targets where possible.
+- Actions include dialogue, variable/flag changes, inventory changes, object state/visibility,
+  player movement, scene changes and character dialogue.
+
+DIALOGUES
+- One scene-scoped dialogue file per talkable character.
+- Visual draggable node editor.
+- Entry node, speaker, line, choices, target nodes and conditions.
+- Optional project character portrait slot is displayed by the runtime when available.
+
+PLAY MODE
+- Play Scene button from the editor.
+- Uses the same authored JSON files currently open in SCEMQ.
+- Player walking constrained to authored walk polygons.
+- Camera follows/fixes according to scene camera settings.
+- Actor dynamic Z resolved from depth polygons.
+- Hotspot verbs and interaction walk-to points.
+- Scene exits and spawn points.
+- Object visual states and show/hide actions.
+- Dialogue tree playback.
+- Persistent UI, selected verbs, status text and inventory.
+- Save/load slots stored locally for runtime testing.
+- Scene music/ambience and optional verb cursor assets.
+
+EDITOR QUALITY OF LIFE
+- Autosave to the selected project folder.
+- Undo/redo for scene and project edits.
+- Backward-compatible loading of v0.1 scene files with in-memory migration to v0.2 defaults.
+- All game content remains JSON and assets; authors do not edit React/JavaScript.
+
+BROWSER REQUIREMENT
 - Current Chrome or Edge.
-- Must run from localhost (npm run dev). The File System Access API is used for direct local-folder writes.
+- Run from localhost with npm run dev for direct folder access.
 
-Commands
+COMMANDS
 npm install
 npm run dev
 npm test
 npm run build
-
-Tests
-- File/id naming rules.
-- Scene-scoped object creation.
-- Scene-scoped dialogue creation.
-- Modular visual config defaults.
