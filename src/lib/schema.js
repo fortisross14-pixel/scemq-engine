@@ -1,10 +1,10 @@
 import { slugify, uniqueId } from './id.js';
 
-export const SCHEMA_VERSION = '0.2';
+export const SCHEMA_VERSION = '0.3';
 
 export const EVENT_TYPES = [
   'onLook', 'onUse', 'onPickUp', 'onTalk', 'onGive', 'onOpen', 'onClose', 'onPush', 'onPull',
-  'onEnterScene', 'onLeaveScene', 'onItemUsed', 'onDialogueChoice', 'onVariableChanged'
+  'onEnterScene', 'onLeaveScene', 'onItemUsed', 'onInventoryCombine', 'onDialogueChoice', 'onVariableChanged'
 ];
 
 export const ACTION_TYPES = [
@@ -145,15 +145,12 @@ export function createVisualConfig(sceneId) {
     canvas: { width: 1600, height: 900, backgroundColor: '#20242b' },
     background: { path: '', fit: 'stretch' },
     viewport: {
-      cameraMode: 'follow',
+      followPlayer: true,
       startX: 0,
       startY: 0,
-      deadZoneX: 220,
-      deadZoneY: 120,
-      bounds: { x: 0, y: 0, width: 1600, height: 900 }
+      limits: { left: 0, top: 0, right: 1600, bottom: 900 }
     },
     player: { characterObjectId: '', start: { x: 220, y: 700 }, facing: 'right' },
-    // Backward-compatible alias. Runtime/editor keeps it synchronized with player.start.
     playerStart: { x: 220, y: 700 },
     spawnPoints: [{ id: 'default', name: 'Default', x: 220, y: 700, facing: 'right' }],
     walkAreas: [],
@@ -187,16 +184,24 @@ export function createObjectConfig(sceneId, name = 'New Object', type = 'prop') 
       flipX: false, locked: false, lockAspect: true,
       anchor: type === 'character' ? 'bottom-center' : 'top-left', anchorX: 0.5, anchorY: type === 'character' ? 1 : 0
     },
-    hotspot: {
-      enabled: type !== 'scenery',
-      label: name,
-      actions: {}
-    },
+    hotspot: { enabled: type !== 'scenery', label: name, actions: {} },
     interactionPoint: { x: 210, y: 300, facing: 'right' },
-    character: type === 'character' ? { characterId: id, displayName: name, role: 'npc', walkSpeed: 180 } : null,
+    character: type === 'character' ? { characterId: '', displayName: name, role: 'npc', walkSpeed: 180 } : null,
     exit: type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true } : null,
     notes: ''
   };
+}
+
+export function createCharacterObjectConfig(sceneId, character) {
+  const object = createObjectConfig(sceneId, character.name, 'character');
+  object.id = character.id;
+  object.character = {
+    characterId: character.id,
+    displayName: character.name,
+    role: character.playable ? 'playable' : 'npc',
+    walkSpeed: character.walkSpeed || 180
+  };
+  return object;
 }
 
 export function createDialogueConfig(sceneId, characterId, displayName = characterId) {
@@ -209,7 +214,13 @@ export function createDialogueConfig(sceneId, characterId, displayName = charact
     displayName,
     entryNodeId: startId,
     nodes: [
-      { id: startId, speaker: displayName, text: 'New dialogue.', x: 120, y: 120, choices: [] }
+      {
+        id: startId,
+        beats: [{ id: uniqueId('beat'), speakerId: characterId, text: 'New dialogue.' }],
+        x: 120,
+        y: 120,
+        choices: []
+      }
     ]
   };
 }
@@ -218,14 +229,20 @@ export function createRule() {
   return {
     id: uniqueId('rule'),
     name: 'New rule',
-    event: { type: 'onUse', targetId: '', verb: 'use', itemId: '' },
+    event: { type: 'onUse', targetType: 'object', targetId: '', verb: 'use', itemId: '', bothWays: false },
     conditions: [],
     actions: []
   };
 }
 
-export function createDialogueNode(displayName = 'Character') {
-  return { id: uniqueId('node'), speaker: displayName, text: 'New line.', x: 180, y: 180, choices: [] };
+export function createDialogueNode(defaultSpeakerId = '') {
+  return {
+    id: uniqueId('node'),
+    beats: [{ id: uniqueId('beat'), speakerId: defaultSpeakerId, text: 'New line.' }],
+    x: 180,
+    y: 180,
+    choices: []
+  };
 }
 
 export function createUiElement(type = 'button') {

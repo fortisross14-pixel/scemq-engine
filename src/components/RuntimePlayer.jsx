@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { clampCamera, depthZAtPoint, findPathInWalkAreas } from '../lib/geometry.js';
+import { findInventoryRecipe, inventoryRuleMatches } from '../lib/inventory.js';
 
 function parseValue(value) {
   if (value === 'true') return true;
@@ -17,6 +18,11 @@ function initialRuntimeState(projectData) {
     objectStates: {},
     objectVisibility: {}
   };
+}
+
+function cameraBounds(viewport, canvas) {
+  const l=viewport?.limits||{left:0,top:0,right:canvas.width,bottom:canvas.height};
+  return {x:Number(l.left||0),y:Number(l.top||0),width:Math.max(0,Number(l.right??canvas.width)-Number(l.left||0)),height:Math.max(0,Number(l.bottom??canvas.height)-Number(l.top||0))};
 }
 
 export default function RuntimePlayer({ project, projectData, initialScene, loadScene, onClose }) {
@@ -56,7 +62,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const spawn = loaded.visual.spawnPoints?.find(s => s.id === (spawnPointId || settings.defaultSpawnPointId || 'default')) || loaded.visual.spawnPoints?.[0] || { ...loaded.visual.player.start, facing:'right' };
     setSceneRef(ref); setBundle(loaded); bundleRef.current=loaded;
     const p={x:spawn.x,y:spawn.y}; setPlayerPos(p); playerPosRef.current=p; setFacing(spawn.facing||loaded.visual.player.facing||'right');
-    const viewport=ui.viewport; const c=clampCamera({x:loaded.visual.viewport.startX||0,y:loaded.visual.viewport.startY||0},loaded.visual.canvas,viewport,loaded.visual.viewport.bounds); setCamera(c);
+    const viewport=ui.viewport; const c=clampCamera({x:loaded.visual.viewport.startX||0,y:loaded.visual.viewport.startY||0},loaded.visual.canvas,viewport,cameraBounds(loaded.visual.viewport,loaded.visual.canvas)); setCamera(c);
     setMovingTo(null); setPendingAction(null); setDialogue(null); setHoverText('');
     setTimeout(()=>runEvent('onEnterScene','',loaded),0);
   }
@@ -86,12 +92,11 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   },[movingTo,bundle,walkSpeed,pendingAction,paused]);
 
   useEffect(()=>{
-    if(!bundle || bundle.visual.viewport.cameraMode!=='follow') return;
-    const vp=ui.viewport; const cfg=bundle.visual.viewport; let x=camera.x,y=camera.y;
-    const sx=playerPos.x-x, sy=playerPos.y-y;
-    const left=cfg.deadZoneX||220,right=vp.width-(cfg.deadZoneX||220),top=cfg.deadZoneY||120,bottom=vp.height-(cfg.deadZoneY||120);
-    if(sx<left)x=playerPos.x-left; if(sx>right)x=playerPos.x-right; if(sy<top)y=playerPos.y-top; if(sy>bottom)y=playerPos.y-bottom;
-    const next=clampCamera({x,y},bundle.visual.canvas,vp,cfg.bounds); if(next.x!==camera.x||next.y!==camera.y)setCamera(next);
+    if(!bundle || bundle.visual.viewport.followPlayer===false) return;
+    const vp=ui.viewport; const cfg=bundle.visual.viewport;
+    const desired={x:playerPos.x-vp.width/2,y:playerPos.y-vp.height/2};
+    const next=clampCamera(desired,bundle.visual.canvas,vp,cameraBounds(cfg,bundle.visual.canvas));
+    if(next.x!==camera.x||next.y!==camera.y)setCamera(next);
   },[playerPos,bundle]);
 
   function setRuntimePatch(updater){const current=runtimeRef.current;const next=typeof updater==='function'?updater(current):{...current,...updater};runtimeRef.current=next;setRuntime(next);return next}
@@ -99,6 +104,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const expected=parseValue(c.value); let actual;
     if(c.left==='item') actual=state.inventory.includes(c.key);
     else if(c.left==='variable') actual=state.variables[c.key] ?? state.sceneVariables?.[activeSceneId]?.[c.key];
+    else if(c.left==='state'){const obj=bundleRef.current?.meta?.sceneId===activeSceneId?bundleRef.current.objects.find(o=>o.id===c.key):null;actual=state.objectStates[`${activeSceneId}:${c.key}`] ?? obj?.asset?.state ?? 'default';}
     else actual=state.flags[c.key];
     if(c.op==='has') return c.left==='item'?actual===true:Boolean(actual);
     if(c.op==='notEquals') return actual!==expected; if(c.op==='gt')return Number(actual)>Number(expected); if(c.op==='lt')return Number(actual)<Number(expected); return actual===expected;
@@ -129,11 +135,11 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
 
   function startDialogue(characterId, activeBundle=bundleRef.current){
     const d=activeBundle?.dialogues.find(x=>x.characterId===characterId); if(!d){setMessage('No dialogue is authored for this character.');return}
-    setDialogue({data:d,nodeId:d.entryNodeId});
+    setDialogue({data:d,nodeId:d.entryNodeId,beatIndex:0});
   }
   function chooseDialogueChoice(choice){
     if(choice.actions?.length)runActions(choice.actions);
-    if(choice.targetNodeId)setDialogue(d=>({...d,nodeId:choice.targetNodeId}));else setDialogue(null);
+    if(choice.targetNodeId)setDialogue(d=>({...d,nodeId:choice.targetNodeId,beatIndex:0}));else setDialogue(null);
   }
 
   function activeObjectAsset(obj){
@@ -157,15 +163,18 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     if(binding?.dialogueId)startDialogue(binding.dialogueId);
     if(!binding?.ruleId&&!binding?.dialogueId){const eventType={look:'onLook',use:'onUse',talk:'onTalk',pickUp:'onPickUp',give:'onGive',open:'onOpen',close:'onClose',push:'onPush',pull:'onPull'}[verb];if(eventType)await runEvent(eventType,obj.id);else setMessage('Nothing happens.');}
   }
-  function combineInventoryItems(firstId, secondId){
+  async function combineInventoryItems(firstId, secondId){
     if(firstId===secondId){setSelectedItem('');return}
-    const first=projectData.inventory.find(i=>i.id===firstId);const second=projectData.inventory.find(i=>i.id===secondId);
-    let recipe=(first?.combinations||[]).find(c=>c.withItemId===secondId);let owner=first,other=second;
-    if(!recipe){recipe=(second?.combinations||[]).find(c=>c.withItemId===firstId);owner=second;other=first}
-    if(!recipe||!recipe.resultItemId){setMessage(`Those items do not combine.`);setSelectedItem(secondId);return}
+    const combineRules=(bundleRef.current?.logic.rules||[]).filter(r=>r.event?.type==='onInventoryCombine');
+    const matching=combineRules.find(r=>inventoryRuleMatches(r,firstId,secondId)&&rulePass(r,bundleRef.current));
+    if(matching){await runActions(matching.actions,bundleRef.current);setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');return}
+    const match=findInventoryRecipe(projectData.inventory,firstId,secondId);
+    if(!match?.recipe?.resultItemId){setMessage(`Those items do not combine.`);setSelectedItem(secondId);return}
+    const {recipe,owner,other}=match;
     setRuntimePatch(state=>{let inv=[...state.inventory];if(recipe.consumeSelf!==false)inv=inv.filter(id=>id!==owner.id);if(recipe.consumeOther!==false)inv=inv.filter(id=>id!==other.id);if(!inv.includes(recipe.resultItemId))inv.push(recipe.resultItemId);return{...state,inventory:inv}});
     const result=projectData.inventory.find(i=>i.id===recipe.resultItemId);setMessage(`Created ${result?.name||recipe.resultItemId}.`);setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');
   }
+
   function uiAction(el){const a=el.action||{};if(a.type==='selectVerb'){const verb=a.value||'walk';setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}if(a.type==='openSave')saveGame();if(a.type==='openLoad')loadGame();if(a.type==='toggleHotspots')setRuntimePatch(s=>({...s,showHotspots:!s.showHotspots}));if(a.type==='pause')setPaused(v=>!v);if(a.type==='customRule'&&a.value)executeRule(a.value)}
   function saveGame(){const slot=window.prompt(`Save slot 1-${settings.saveSlots||3}`,'1');if(!slot)return;localStorage.setItem(`scemq-save:${project.id}:${slot}`,JSON.stringify({runtime:runtimeRef.current,sceneId:sceneRef.id,playerPos:playerPosRef.current,camera}));setMessage(`Saved to slot ${slot}.`)}
   async function loadGame(){const slot=window.prompt(`Load slot 1-${settings.saveSlots||3}`,'1');if(!slot)return;const raw=localStorage.getItem(`scemq-save:${project.id}:${slot}`);if(!raw){setMessage(`Slot ${slot} is empty.`);return}const saved=JSON.parse(raw);setRuntime(saved.runtime);runtimeRef.current=saved.runtime;const ref=project.scenes.find(s=>s.id===saved.sceneId)||sceneRef;await enterScene(ref);setPlayerPos(saved.playerPos);playerPosRef.current=saved.playerPos;setCamera(saved.camera||{x:0,y:0});setMessage(`Loaded slot ${slot}.`)}
@@ -173,7 +182,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   if(!bundle)return <div className="runtime-overlay"><div className="runtime-loading">Loading scene…</div></div>;
   const playerT=playerObject?.transform||{width:80,height:160,z:30,opacity:1}; const anchorX=playerT.anchorX??.5,anchorY=playerT.anchorY??1; const playerZ=depthZAtPoint(playerPos,bundle.visual.depthAreas||[],playerT.z||30);
   const viewportObjects=bundle.objects.filter(o=>o.id!==playerObject?.id&&objectVisible(o)).sort((a,b)=>a.transform.z-b.transform.z);
-  const dNode=dialogue?.data.nodes.find(n=>n.id===dialogue.nodeId);
+  const dNode=dialogue?.data.nodes.find(n=>n.id===dialogue.nodeId); const dBeat=dNode?.beats?.[dialogue?.beatIndex||0]; const dSpeaker=dBeat?projectData.characters.find(c=>c.id===dBeat.speakerId):null;
 
   return <div className="runtime-overlay" style={{background:settings.runtimeBackground||'#08090b'}}><div className="runtime-topbar"><strong>PLAY MODE</strong><span>{sceneRef.name}</span><button onClick={onClose}>Exit play</button></div><div className="runtime-fit"><div className="runtime-screen" style={{width:ui.screen.width,height:ui.screen.height,background:ui.screen.backgroundColor}}>{bundle.assetUrls.__music&&<audio src={bundle.assetUrls.__music} autoPlay loop/>}{bundle.assetUrls.__ambient&&<audio src={bundle.assetUrls.__ambient} autoPlay loop/>}
     <div className="runtime-viewport" style={{left:ui.viewport.x,top:ui.viewport.y,width:ui.viewport.width,height:ui.viewport.height,cursor:projectData.assetUrls.ui?.[`cursor:${selectedVerb}`]?`url(${projectData.assetUrls.ui[`cursor:${selectedVerb}`]}), auto`:undefined}} onClick={clickWorld}>
@@ -189,6 +198,6 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       {el.type==='image'&&projectData.assetUrls.ui?.[el.id]?<img src={projectData.assetUrls.ui[el.id]} alt=""/>:null}
       {!['statusText','inventory','image','panel'].includes(el.type)?<span>{el.label||el.name}</span>:null}
     </div>})}
-    {dNode&&<div className="runtime-dialogue">{projectData.assetUrls.characters?.[`${dialogue.data.characterId}:portrait`]&&<img className="runtime-dialogue-portrait" src={projectData.assetUrls.characters[`${dialogue.data.characterId}:portrait`]} alt=""/>}<div className="runtime-dialogue-speaker">{dNode.speaker}</div><div className="runtime-dialogue-line">{dNode.text}</div><div className="runtime-dialogue-choices">{(dNode.choices||[]).filter(c=>!c.condition||(typeof c.condition==='string'?(runtime.flags[c.condition]||runtime.variables[c.condition]):conditionPass(c.condition))).map(c=><button key={c.id} onClick={()=>chooseDialogueChoice(c)}>{c.text}</button>)}{(!dNode.choices||dNode.choices.length===0)&&<button onClick={()=>setDialogue(null)}>Continue</button>}</div></div>}
+    {dNode&&dBeat&&<div className="runtime-dialogue">{projectData.assetUrls.characters?.[`${dBeat.speakerId}:portrait`]&&<img className="runtime-dialogue-portrait" src={projectData.assetUrls.characters[`${dBeat.speakerId}:portrait`]} alt=""/>}<div className="runtime-dialogue-speaker">{dSpeaker?.name||dBeat.speakerId}</div><div className="runtime-dialogue-line">{dBeat.text}</div><div className="runtime-dialogue-choices">{(dialogue.beatIndex||0)<(dNode.beats?.length||1)-1?<button onClick={()=>setDialogue(d=>({...d,beatIndex:(d.beatIndex||0)+1}))}>Continue</button>:<>{(dNode.choices||[]).filter(c=>!c.condition||(typeof c.condition==='string'?(runtime.flags[c.condition]||runtime.variables[c.condition]):conditionPass(c.condition))).map(c=><button key={c.id} onClick={()=>chooseDialogueChoice(c)}>{c.text}</button>)}{(!dNode.choices||dNode.choices.length===0)&&<button onClick={()=>setDialogue(null)}>Continue</button>}</>}</div></div>}
   {paused&&<div className="runtime-paused">PAUSED</div>}</div></div></div>
 }
