@@ -1,0 +1,84 @@
+SCEMQ v0.1.0
+Script Creation Engine for Mara Quibble
+
+Purpose
+- Standalone reusable authoring engine for scene-based point-and-click adventure projects.
+- SCEMQ itself is not tied to Mara Quibble; Mara can later be converted into a SCEMQ project.
+
+Core workflow
+1. Run SCEMQ locally in Chrome or Edge.
+2. Load an existing project folder or choose an empty folder and create a project.
+3. Create/open scenes from the project scene list.
+4. Author each scene through exactly three main tabs:
+   - Visual Config
+   - Logic
+   - Dialogues
+5. Changes auto-save into modular scene-scoped JSON files in the chosen local project folder.
+
+Generated project file structure
+scemq.project.json
+scenes/
+  scene1/
+    scene.meta.scene1.json
+    scene.visual.scene1.json
+    scene.logic.scene1.json
+    objects/
+      <object-id>.object.scene1.json
+    dialogues/
+      <character-id>.dialogue.scene1.json
+    assets/
+      <scene image files>
+
+Implemented in v0.1.0
+- Load project folder.
+- Create project in selected local folder.
+- Scene list and new-scene creation.
+- Scene-scoped modular file naming.
+- Direct local file writes via browser File System Access API.
+- Auto-save after edits.
+- Visual Config editor:
+  - add prop/character/scenery
+  - move objects by drag
+  - resize objects
+  - exact X/Y/width/height/Z/opacity controls
+  - show/hide object
+  - replace image and copy it into scene assets
+  - enable/configure hotspots
+  - associate verbs with logic rule IDs
+  - associate Talk with dialogue character IDs
+  - scene canvas settings stored in scene visual file
+  - per-object configuration stored in separate object files
+- Logic editor:
+  - rule list
+  - events
+  - target objects
+  - conditions
+  - ordered actions
+  - import/export scene.logic JSON
+- Dialogue editor:
+  - automatically lists objects tagged as characters
+  - one dialogue file per character per scene
+  - draggable visual dialogue nodes
+  - entry node
+  - editable speaker/line
+  - player choices and node connections
+  - choice condition field
+  - import/export character dialogue JSON
+- Visual import/export exchange package for collaboration while retaining modular local files.
+- Missing image assets render as lightweight placeholders.
+
+Browser requirement
+- Current Chrome or Edge.
+- Must run from localhost (npm run dev). The File System Access API is used for direct local-folder writes.
+
+Commands
+npm install
+npm run dev
+npm test
+npm run build
+
+Tests
+- File/id naming rules.
+- Scene-scoped object creation.
+- Scene-scoped dialogue creation.
+- Modular visual config defaults.

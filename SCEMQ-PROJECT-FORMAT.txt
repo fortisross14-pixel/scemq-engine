@@ -1,0 +1,47 @@
+SCEMQ PROJECT FORMAT v0.1
+
+SCEMQ is intentionally game-agnostic. A project is a folder selected by the user.
+The project root contains scemq.project.json and a scenes directory.
+
+A scene called scene1 uses:
+
+scenes/scene1/scene.meta.scene1.json
+scenes/scene1/scene.visual.scene1.json
+scenes/scene1/scene.logic.scene1.json
+scenes/scene1/objects/<id>.object.scene1.json
+scenes/scene1/dialogues/<character>.dialogue.scene1.json
+scenes/scene1/assets/<image files>
+
+The scene ID is always present in the filename so files exchanged between people or AI sessions remain unambiguous.
+
+VISUAL CONFIG
+scene.visual.scene1.json stores scene-wide visual information such as canvas size, player start position and object references.
+Every visual object has its own file. This includes scenery, props, characters, hotspots and exits.
+Object files store asset path, transform, Z layer, visibility, hotspot state and action bindings.
+
+CHARACTERS
+Tagging a visual object as type "character" adds stable character metadata to that scene object.
+The character automatically appears in the Dialogues tab.
+Dialogue remains scene-scoped: pindle.dialogue.scene1.json and pindle.dialogue.scene7.json are independent files.
+
+LOGIC
+scene.logic.scene1.json contains scene variables and event rules.
+Rules contain an event, optional conditions and ordered actions.
+Hotspot verbs can bind directly to rule IDs through Visual Config without editing JSON.
+
+DIALOGUE
+Each talkable character receives a separate scene-scoped dialogue file.
+Dialogue files contain draggable nodes, entry point, player choices, links and optional choice conditions.
+
+COLLABORATION / IMPORT
+The engine can import:
+- scene.logic.<scene>.json
+- <character>.dialogue.<scene>.json
+- individual *.object.<scene>.json files
+- scene.visual.<scene>.json
+- SCEMQ visual exchange package files
+
+Visual Config exports a single visual.package.<scene>.json convenience file containing the scene visual config plus all object configs. This is for easy exchange. On disk, the project remains modular.
+
+ASSETS
+Replacing an image through Visual Config copies the selected image into that scene's assets folder and updates the corresponding object file. Missing images render as lightweight placeholders, so configuration can be authored before final art exists.
