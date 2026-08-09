@@ -297,3 +297,15 @@ textarea { resize: vertical; }
 
 /* SCEMQ v0.3 authoring safety + camera simplification */
 .character-place-select{min-width:170px;max-width:220px}.camera-limits-frame{position:absolute;border:2px dashed rgba(237,174,78,.9);background:rgba(237,174,78,.035);z-index:9490;pointer-events:none}.camera-limits-frame span{position:absolute;top:5px;right:6px;font-size:10px;color:#f0ca7c;background:#312819;padding:3px 5px}.camera-limit-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.import-target-box{border-top:1px solid var(--line-soft);padding:10px;display:grid;gap:7px}.import-target-box small{color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.import-target-box select,.import-target-box button{width:100%}.dialogue-beat-editor{border:1px solid #353c46;background:#171a1f;border-radius:6px;padding:8px;margin-bottom:8px}.dialogue-beat-editor textarea{resize:vertical}.logic-condition-row{grid-template-columns:.8fr 1.05fr .75fr 1fr 28px}
+
+/* SCEMQ v0.3.1 authoring fixes */
+.character-create-strip { display:grid; grid-template-columns:minmax(180px,1.2fr) minmax(180px,1fr) minmax(170px,.9fr) auto; gap:8px; align-items:end; padding:10px 12px; border-bottom:1px solid var(--line-soft); background:#15181d; }
+.character-create-strip > div { align-self:center; }
+.character-create-strip strong,.character-create-strip small { display:block; }
+.character-create-strip small { margin-top:3px; color:var(--muted); font-size:9px; }
+.character-create-strip input { min-width:0; }
+.runtime-pickup-backdrop { position:absolute; inset:0; z-index:15000; background:rgba(0,0,0,.34); display:grid; place-items:center; cursor:pointer; }
+.runtime-pickup-card { min-width:300px; max-width:620px; padding:22px 28px; background:rgba(24,27,32,.98); border:1px solid #806a3d; border-radius:9px; box-shadow:0 18px 55px rgba(0,0,0,.6); text-align:center; color:#f0e9d8; }
+.runtime-pickup-card strong { display:block; font-size:18px; line-height:1.4; }
+.runtime-pickup-card span { display:block; margin-top:12px; color:#8f97a3; font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+@media (max-width: 1100px) { .character-create-strip { grid-template-columns:1fr 1fr; } }

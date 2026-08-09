@@ -219,7 +219,7 @@ function migrateObject(object) {
   const character = object.type === 'character'
     ? { characterId: object.character?.characterId || object.id, displayName: object.character?.displayName || object.name, role: object.character?.role || 'npc', walkSpeed: object.character?.walkSpeed || 180 }
     : null;
-  const exit = object.type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, ...(object.exit || {}) } : null;
+  const exit = object.type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, availabilityRuleId: '', hiddenUntilAvailable: false, blockedMessage: 'You cannot go there yet.', ...(object.exit || {}) } : null;
   return { ...object, schemaVersion: '0.3', asset, transform: { ...object.transform, ...base.transform, ...(object.transform || {}) }, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
 }
 

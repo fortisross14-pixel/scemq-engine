@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createInventoryItem, createProjectUi, createRule, createVisualConfig } from './schema.js';
+import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createInventoryItem, createObjectConfig, createProjectUi, createRule, createVisualConfig } from './schema.js';
 
 test('scene character objects reference project characters', () => {
   const character = { ...createCharacterDefinition('Captain Nib'), id: 'captain-nib' };
@@ -44,4 +44,17 @@ test('inventory combine rules carry target type and both ways', () => {
   rule.event = { type: 'onInventoryCombine', targetType: 'inventory', itemId: 'short-ruler', targetId: 'long-ruler', bothWays: true };
   assert.equal(rule.event.targetType, 'inventory');
   assert.equal(rule.event.bothWays, true);
+});
+
+
+test('exit objects support rule-gated visibility and blocking', () => {
+  const exit = createObjectConfig('scene1', 'City Map', 'exit');
+  assert.equal(exit.exit.availabilityRuleId, '');
+  assert.equal(exit.exit.hiddenUntilAvailable, false);
+  assert.match(exit.exit.blockedMessage, /cannot go there/i);
+});
+
+test('inventory items can customize pickup popup text', () => {
+  const item = createInventoryItem('Short Ruler');
+  assert.equal(item.pickupMessage, '');
 });

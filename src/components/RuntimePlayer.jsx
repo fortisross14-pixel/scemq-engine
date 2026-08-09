@@ -35,6 +35,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const [selectedItem, setSelectedItem] = useState('');
   const [hoverText, setHoverText] = useState('');
   const [message, setMessage] = useState('');
+  const [pickupQueue, setPickupQueue] = useState([]);
   const [dialogue, setDialogue] = useState(null);
   const [paused, setPaused] = useState(false);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
@@ -63,7 +64,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     setSceneRef(ref); setBundle(loaded); bundleRef.current=loaded;
     const p={x:spawn.x,y:spawn.y}; setPlayerPos(p); playerPosRef.current=p; setFacing(spawn.facing||loaded.visual.player.facing||'right');
     const viewport=ui.viewport; const c=clampCamera({x:loaded.visual.viewport.startX||0,y:loaded.visual.viewport.startY||0},loaded.visual.canvas,viewport,cameraBounds(loaded.visual.viewport,loaded.visual.canvas)); setCamera(c);
-    setMovingTo(null); setPendingAction(null); setDialogue(null); setHoverText('');
+    setMovingTo(null); setPendingAction(null); setDialogue(null); setHoverText(''); setPickupQueue([]);
     setTimeout(()=>runEvent('onEnterScene','',loaded),0);
   }
 
@@ -100,6 +101,9 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   },[playerPos,bundle]);
 
   function setRuntimePatch(updater){const current=runtimeRef.current;const next=typeof updater==='function'?updater(current):{...current,...updater};runtimeRef.current=next;setRuntime(next);return next}
+  function pickupMessageFor(itemId){const item=projectData.inventory.find(i=>i.id===itemId);return item?.pickupMessage?.trim()||`You picked up ${item?.name||itemId}.`}
+  function giveInventoryItem(itemId,{announce=true}={}){if(!itemId)return false;const already=runtimeRef.current.inventory.includes(itemId);if(already)return false;setRuntimePatch(s=>({...s,inventory:[...s.inventory,itemId]}));if(announce)setPickupQueue(q=>[...q,{id:`${itemId}:${Date.now()}:${q.length}`,itemId,text:pickupMessageFor(itemId)}]);return true}
+  function exitAvailable(obj,activeBundle=bundleRef.current){const ruleId=obj?.exit?.availabilityRuleId;if(!ruleId)return true;const rule=findRule(ruleId,activeBundle);return !!rule&&rulePass(rule,activeBundle)}
   function conditionPass(c, state=runtimeRef.current, activeSceneId=sceneRef.id){
     const expected=parseValue(c.value); let actual;
     if(c.left==='item') actual=state.inventory.includes(c.key);
@@ -118,7 +122,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       if(action.type==='say'){setMessage(String(action.value||''));setTimeout(()=>setMessage(''),2400)}
       if(action.type==='setFlag')setRuntimePatch(s=>({...s,flags:{...s.flags,[key]:value}}));
       if(action.type==='setVariable'){const sid=activeBundle?.meta?.sceneId||sceneRef.id;const isGlobal=(projectData.variables?.variables||[]).some(v=>v.id===key);if(isGlobal)setRuntimePatch(s=>({...s,variables:{...s.variables,[key]:value}}));else setRuntimePatch(s=>({...s,sceneVariables:{...s.sceneVariables,[sid]:{...(s.sceneVariables?.[sid]||{}),[key]:value}}}));await runEvent('onVariableChanged',key,activeBundle)}
-      if(action.type==='giveItem')setRuntimePatch(s=>({...s,inventory:s.inventory.includes(key||value)?s.inventory:[...s.inventory,key||value]}));
+      if(action.type==='giveItem')giveInventoryItem(key||value);
       if(action.type==='removeItem')setRuntimePatch(s=>({...s,inventory:s.inventory.filter(id=>id!==(key||value))}));
       if(action.type==='setVisualState'){const scoped=`${activeBundle?.meta?.sceneId||sceneRef.id}:${key}`;setRuntimePatch(s=>({...s,objectStates:{...s.objectStates,[scoped]:String(action.value||'default')}}))}
       if(action.type==='showObject'){const scoped=`${activeBundle?.meta?.sceneId||sceneRef.id}:${key}`;setRuntimePatch(s=>({...s,objectVisibility:{...s.objectVisibility,[scoped]:true}}))}
@@ -151,13 +155,13 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     if(movingTo&&playerDefinition){const slot={left:'walkLeft',right:'walkRight',up:'walkUp',down:'walkDown'}[facing]||'walkRight';const animated=projectData.assetUrls.characters?.[`${playerDefinition.id}:${slot}`];if(animated)return animated;}
     return activeObjectAsset(playerObject) || (playerDefinition?projectData.assetUrls.characters?.[`${playerDefinition.id}:idle`]: '') || '';
   }
-  function objectVisible(obj){return runtime.objectVisibility[`${sceneRef.id}:${obj.id}`] ?? obj.transform.visible}
+  function objectVisible(obj){const base=runtime.objectVisibility[`${sceneRef.id}:${obj.id}`] ?? obj.transform.visible;if(!base)return false;if(obj.type==='exit'&&obj.exit?.hiddenUntilAvailable&&!exitAvailable(obj))return false;return true}
   function interactionLabel(obj,verb){const item=selectedItem?projectData.inventory.find(i=>i.id===selectedItem)?.name:'';const target=obj.hotspot?.label||obj.name;if(item&&verb==='use')return `Use ${item} with ${target}`;if(item&&verb==='give')return `Give ${item} to ${target}`;const v=verb==='pickUp'?'Pick up':verb[0].toUpperCase()+verb.slice(1);return `${v} ${target}`}
   function walkTo(point, action=null){if(!bundle)return;const path=findPathInWalkAreas(playerPosRef.current,point,bundle.visual.walkAreas||[]);if(!path.length)return;setPendingAction(action);moveQueueRef.current=path.slice(1);setMovingTo(path[0])}
   function clickWorld(e){if(selectedVerb!=='walk'||!bundle)return;const rect=e.currentTarget.getBoundingClientRect();const x=(e.clientX-rect.left)*(ui.viewport.width/rect.width)+camera.x;const y=(e.clientY-rect.top)*(ui.viewport.height/rect.height)+camera.y;walkTo({x,y})}
   function clickObject(e,obj){e.stopPropagation();const verb=selectedVerb;if(verb==='walk'&&obj.type!=='exit'){walkTo(obj.interactionPoint||{x:obj.transform.x+obj.transform.width/2,y:obj.transform.y+obj.transform.height});return}const point=obj.interactionPoint||{x:obj.transform.x+obj.transform.width/2,y:obj.transform.y+obj.transform.height};walkTo(point,{object:obj,verb})}
   async function performInteraction(obj,verb){
-    if(obj.type==='exit'&&verb==='walk'&&obj.exit?.destinationSceneId){const next=project.scenes.find(s=>s.id===obj.exit.destinationSceneId);if(next){await runEvent('onLeaveScene','',bundleRef.current);await enterScene(next,obj.exit.spawnPointId);return}}
+    if(obj.type==='exit'&&verb==='walk'&&obj.exit?.destinationSceneId){if(!exitAvailable(obj)){setMessage(obj.exit?.blockedMessage||'You cannot go there yet.');return}const next=project.scenes.find(s=>s.id===obj.exit.destinationSceneId);if(next){await runEvent('onLeaveScene','',bundleRef.current);await enterScene(next,obj.exit.spawnPointId);return}}
     const binding=obj.hotspot?.actions?.[verb];
     if(binding?.ruleId)await executeRule(binding.ruleId);
     if(binding?.dialogueId)startDialogue(binding.dialogueId);
@@ -171,8 +175,9 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const match=findInventoryRecipe(projectData.inventory,firstId,secondId);
     if(!match?.recipe?.resultItemId){setMessage(`Those items do not combine.`);setSelectedItem(secondId);return}
     const {recipe,owner,other}=match;
+    const alreadyHadResult=runtimeRef.current.inventory.includes(recipe.resultItemId);
     setRuntimePatch(state=>{let inv=[...state.inventory];if(recipe.consumeSelf!==false)inv=inv.filter(id=>id!==owner.id);if(recipe.consumeOther!==false)inv=inv.filter(id=>id!==other.id);if(!inv.includes(recipe.resultItemId))inv.push(recipe.resultItemId);return{...state,inventory:inv}});
-    const result=projectData.inventory.find(i=>i.id===recipe.resultItemId);setMessage(`Created ${result?.name||recipe.resultItemId}.`);setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');
+    const result=projectData.inventory.find(i=>i.id===recipe.resultItemId);if(!alreadyHadResult)setPickupQueue(q=>[...q,{id:`${recipe.resultItemId}:${Date.now()}:${q.length}`,itemId:recipe.resultItemId,text:pickupMessageFor(recipe.resultItemId)}]);setMessage(`Created ${result?.name||recipe.resultItemId}.`);setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');
   }
 
   function uiAction(el){const a=el.action||{};if(a.type==='selectVerb'){const verb=a.value||'walk';setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}if(a.type==='openSave')saveGame();if(a.type==='openLoad')loadGame();if(a.type==='toggleHotspots')setRuntimePatch(s=>({...s,showHotspots:!s.showHotspots}));if(a.type==='pause')setPaused(v=>!v);if(a.type==='customRule'&&a.value)executeRule(a.value)}
@@ -198,6 +203,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       {el.type==='image'&&projectData.assetUrls.ui?.[el.id]?<img src={projectData.assetUrls.ui[el.id]} alt=""/>:null}
       {!['statusText','inventory','image','panel'].includes(el.type)?<span>{el.label||el.name}</span>:null}
     </div>})}
+    {pickupQueue.length>0&&<div className="runtime-pickup-backdrop" onClick={()=>setPickupQueue(q=>q.slice(1))}><div className="runtime-pickup-card" onClick={e=>{e.stopPropagation();setPickupQueue(q=>q.slice(1))}}><strong>{pickupQueue[0].text}</strong><span>Click to continue</span></div></div>}
     {dNode&&dBeat&&<div className="runtime-dialogue">{projectData.assetUrls.characters?.[`${dBeat.speakerId}:portrait`]&&<img className="runtime-dialogue-portrait" src={projectData.assetUrls.characters[`${dBeat.speakerId}:portrait`]} alt=""/>}<div className="runtime-dialogue-speaker">{dSpeaker?.name||dBeat.speakerId}</div><div className="runtime-dialogue-line">{dBeat.text}</div><div className="runtime-dialogue-choices">{(dialogue.beatIndex||0)<(dNode.beats?.length||1)-1?<button onClick={()=>setDialogue(d=>({...d,beatIndex:(d.beatIndex||0)+1}))}>Continue</button>:<>{(dNode.choices||[]).filter(c=>!c.condition||(typeof c.condition==='string'?(runtime.flags[c.condition]||runtime.variables[c.condition]):conditionPass(c.condition))).map(c=><button key={c.id} onClick={()=>chooseDialogueChoice(c)}>{c.text}</button>)}{(!dNode.choices||dNode.choices.length===0)&&<button onClick={()=>setDialogue(null)}>Continue</button>}</>}</div></div>}
   {paused&&<div className="runtime-paused">PAUSED</div>}</div></div></div>
 }
