@@ -82,15 +82,15 @@ export async function loadProject(root) {
   let manifest = await readJson(root, 'scemq.project.json');
   if (manifest.kind !== 'scemq-project') throw new Error('This folder does not contain a SCEMQ project.');
   await ensureProjectModules(root, manifest);
-  if (manifest.schemaVersion !== '0.3') {
-    manifest = { ...manifest, schemaVersion: '0.3', updatedAt: new Date().toISOString() };
+  if (manifest.schemaVersion !== '0.4') {
+    manifest = { ...manifest, schemaVersion: '0.4', updatedAt: new Date().toISOString() };
     await writeJson(root, 'scemq.project.json', manifest);
   }
   return manifest;
 }
 
 export async function saveProject(root, manifest) {
-  const next = { ...manifest, schemaVersion: '0.3', updatedAt: new Date().toISOString() };
+  const next = { ...manifest, schemaVersion: '0.4', updatedAt: new Date().toISOString() };
   await writeJson(root, 'scemq.project.json', next);
   return next;
 }
@@ -100,10 +100,10 @@ export async function loadProjectBundle(root, manifest) {
   const ui = await readJson(projectDir, 'project.ui.json');
   const variables = await readJson(projectDir, 'project.variables.json');
   const settings = await readJson(projectDir, 'project.settings.json');
-  const characters = (await scanJsonDirectory(charactersDir, '.character.json')).map(c => ({ ...c, schemaVersion: '0.3' }));
+  const characters = (await scanJsonDirectory(charactersDir, '.character.json')).map(c => ({ ...c, schemaVersion: '0.4' }));
   const inventory = (await scanJsonDirectory(inventoryDir, '.item.json')).map(item => ({
     ...item,
-    schemaVersion: '0.3',
+    schemaVersion: '0.4',
     combinations: (item.combinations || []).map(combo => ({ ...combo, bidirectional: combo.bidirectional ?? true }))
   }));
   const assetUrls = { ui: {}, characters: {}, inventory: {} };
@@ -132,15 +132,15 @@ export async function loadProjectBundle(root, manifest) {
 
 export async function saveProjectBundle(root, data) {
   const { projectDir, charactersDir, inventoryDir } = await ensureProjectModules(root, { name: data.settings?.title || 'Project' });
-  await writeJson(projectDir, 'project.ui.json', { ...data.ui, schemaVersion: '0.3' });
-  await writeJson(projectDir, 'project.variables.json', { ...data.variables, schemaVersion: '0.3' });
-  await writeJson(projectDir, 'project.settings.json', { ...data.settings, schemaVersion: '0.3' });
+  await writeJson(projectDir, 'project.ui.json', { ...data.ui, schemaVersion: '0.4' });
+  await writeJson(projectDir, 'project.variables.json', { ...data.variables, schemaVersion: '0.4' });
+  await writeJson(projectDir, 'project.settings.json', { ...data.settings, schemaVersion: '0.4' });
 
   const expectedCharacters = new Set();
   for (const character of data.characters || []) {
     const filename = `${slugify(character.id)}.character.json`;
     expectedCharacters.add(filename);
-    await writeJson(charactersDir, filename, { ...character, schemaVersion: '0.3' });
+    await writeJson(charactersDir, filename, { ...character, schemaVersion: '0.4' });
   }
   for await (const [name, handle] of charactersDir.entries()) {
     if (handle.kind === 'file' && name.endsWith('.character.json') && !expectedCharacters.has(name)) await charactersDir.removeEntry(name);
@@ -150,7 +150,7 @@ export async function saveProjectBundle(root, data) {
   for (const item of data.inventory || []) {
     const filename = `${slugify(item.id)}.item.json`;
     expectedItems.add(filename);
-    await writeJson(inventoryDir, filename, { ...item, schemaVersion: '0.3' });
+    await writeJson(inventoryDir, filename, { ...item, schemaVersion: '0.4' });
   }
   for await (const [name, handle] of inventoryDir.entries()) {
     if (handle.kind === 'file' && name.endsWith('.item.json') && !expectedItems.has(name)) await inventoryDir.removeEntry(name);
@@ -190,7 +190,7 @@ function migrateVisual(visual) {
   return {
     ...base,
     ...visual,
-    schemaVersion: '0.3',
+    schemaVersion: '0.4',
     background: { ...base.background, ...(visual.background || {}) },
     viewport: {
       ...base.viewport,
@@ -220,7 +220,7 @@ function migrateObject(object) {
     ? { characterId: object.character?.characterId || object.id, displayName: object.character?.displayName || object.name, role: object.character?.role || 'npc', walkSpeed: object.character?.walkSpeed || 180 }
     : null;
   const exit = object.type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, availabilityRuleId: '', hiddenUntilAvailable: false, blockedMessage: 'You cannot go there yet.', ...(object.exit || {}) } : null;
-  return { ...object, schemaVersion: '0.3', asset, transform: { ...object.transform, ...base.transform, ...(object.transform || {}) }, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
+  return { ...object, schemaVersion: '0.4', asset, transform: { ...object.transform, ...base.transform, ...(object.transform || {}) }, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
 }
 
 export async function loadSceneBundle(root, sceneRef) {
@@ -269,7 +269,7 @@ export async function loadSceneBundle(root, sceneRef) {
     }
   }
 
-  return { meta, visual, logic: { ...logic, schemaVersion: '0.3' }, objects, dialogues, assetUrls, stateAssetUrls };
+  return { meta, visual, logic: { ...logic, schemaVersion: '0.4' }, objects, dialogues, assetUrls, stateAssetUrls };
 }
 
 export async function saveSceneBundle(root, sceneRef, bundle) {
@@ -278,15 +278,15 @@ export async function saveSceneBundle(root, sceneRef, bundle) {
   const objectsDir = await ensureDirectory(sceneDir, ['objects']);
   const dialoguesDir = await ensureDirectory(sceneDir, ['dialogues']);
 
-  await writeJson(sceneDir, `scene.meta.${sceneId}.json`, { ...bundle.meta, schemaVersion: '0.3', updatedAt: new Date().toISOString() });
-  await writeJson(sceneDir, `scene.visual.${sceneId}.json`, { ...bundle.visual, schemaVersion: '0.3', playerStart: bundle.visual.player?.start || bundle.visual.playerStart });
-  await writeJson(sceneDir, `scene.logic.${sceneId}.json`, { ...bundle.logic, schemaVersion: '0.3' });
+  await writeJson(sceneDir, `scene.meta.${sceneId}.json`, { ...bundle.meta, schemaVersion: '0.4', updatedAt: new Date().toISOString() });
+  await writeJson(sceneDir, `scene.visual.${sceneId}.json`, { ...bundle.visual, schemaVersion: '0.4', playerStart: bundle.visual.player?.start || bundle.visual.playerStart });
+  await writeJson(sceneDir, `scene.logic.${sceneId}.json`, { ...bundle.logic, schemaVersion: '0.4' });
 
   const expectedObjectFiles = new Set();
   for (const object of bundle.objects) {
     const filename = `${slugify(object.id)}.object.${sceneId}.json`;
     expectedObjectFiles.add(filename);
-    await writeJson(objectsDir, filename, object);
+    await writeJson(objectsDir, filename, { ...object, schemaVersion: '0.4' });
   }
   for await (const [name, handle] of objectsDir.entries()) {
     if (handle.kind === 'file' && name.endsWith(`.object.${sceneId}.json`) && !expectedObjectFiles.has(name)) await objectsDir.removeEntry(name);
@@ -296,7 +296,7 @@ export async function saveSceneBundle(root, sceneRef, bundle) {
   for (const dialogue of bundle.dialogues) {
     const filename = `${slugify(dialogue.characterId)}.dialogue.${sceneId}.json`;
     expectedDialogueFiles.add(filename);
-    await writeJson(dialoguesDir, filename, { ...dialogue, schemaVersion: '0.3' });
+    await writeJson(dialoguesDir, filename, { ...dialogue, schemaVersion: '0.4' });
   }
   for await (const [name, handle] of dialoguesDir.entries()) {
     if (handle.kind === 'file' && name.endsWith(`.dialogue.${sceneId}.json`) && !expectedDialogueFiles.has(name)) await dialoguesDir.removeEntry(name);
@@ -348,3 +348,101 @@ export async function importJsonFiles(fileList) {
 
 export function newCharacter(name) { return createCharacterDefinition(name); }
 export function newInventoryItem(name) { return createInventoryItem(name); }
+
+function bytesToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function readAssetAsPackageEntry(dir, path, scope) {
+  if (!path) return null;
+  try {
+    const handle = await dir.getFileHandle(path);
+    const file = await handle.getFile();
+    return { scope, path, mimeType: file.type || 'application/octet-stream', dataBase64: bytesToBase64(await file.arrayBuffer()) };
+  } catch { return null; }
+}
+
+export async function embedScenePackageAssets(root, sceneRef, pkg) {
+  const entries = [];
+  const seen = new Set();
+  const push = async (dir, path, scope) => {
+    if (!path || seen.has(`${scope}:${path}`)) return;
+    seen.add(`${scope}:${path}`);
+    const entry = await readAssetAsPackageEntry(dir, path, scope);
+    if (entry) entries.push(entry);
+  };
+
+  const sceneDir = await ensureDirectory(root, ['scenes', sceneRef.folder || sceneRef.id]);
+  const sceneAssets = await ensureDirectory(sceneDir, ['assets']);
+  await push(sceneAssets, pkg.scene?.visual?.background?.path, 'scene');
+  for (const slot of ['music', 'ambient']) await push(sceneAssets, pkg.scene?.meta?.audio?.[slot], 'scene');
+  for (const object of pkg.scene?.objects || []) {
+    await push(sceneAssets, object.asset?.path, 'scene');
+    for (const path of Object.values(object.asset?.states || {})) await push(sceneAssets, path, 'scene');
+  }
+
+  const characterAssets = await ensureDirectory(root, ['assets', 'characters']);
+  for (const character of pkg.dependencies?.characters || []) for (const path of Object.values(character.assets || {})) await push(characterAssets, path, 'characters');
+  const inventoryAssets = await ensureDirectory(root, ['assets', 'inventory']);
+  for (const item of pkg.dependencies?.inventory || []) {
+    await push(inventoryAssets, item.asset, 'inventory');
+    await push(inventoryAssets, item.cursorAsset, 'inventory');
+  }
+  return { ...pkg, assets: entries };
+}
+
+async function writePackageAsset(root, sceneRef, entry) {
+  if (!entry?.path || !entry?.dataBase64) return;
+  let dir;
+  if (entry.scope === 'scene') {
+    const sceneDir = await ensureDirectory(root, ['scenes', sceneRef.folder || sceneRef.id]);
+    dir = await ensureDirectory(sceneDir, ['assets']);
+  } else if (['characters', 'inventory', 'ui'].includes(entry.scope)) {
+    dir = await ensureDirectory(root, ['assets', entry.scope]);
+  } else return;
+  const handle = await dir.getFileHandle(entry.path, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(base64ToBytes(entry.dataBase64));
+  await writable.close();
+}
+
+export async function applyScenePackage(root, project, projectData, pkg, { mode = 'replace', targetSceneId = '' } = {}) {
+  const { mergeDependencies, remapScenePackage } = await import('./scenePackage.js');
+  const desiredId = targetSceneId || pkg.sceneId;
+  const working = remapScenePackage(pkg, desiredId);
+  const sceneId = working.sceneId;
+  const sceneName = working.scene?.meta?.name || working.name || sceneId;
+  const existing = (project.scenes || []).find(scene => scene.id === sceneId);
+  if (existing && mode !== 'replace') throw new Error(`Scene ${sceneId} already exists.`);
+
+  let nextProjectData = mergeDependencies(projectData, working);
+  if (!nextProjectData.settings?.defaultSceneId) nextProjectData = { ...nextProjectData, settings: { ...(nextProjectData.settings || {}), defaultSceneId: sceneId } };
+  await saveProjectBundle(root, nextProjectData);
+
+  const sceneRef = existing
+    ? { ...existing, name: sceneName }
+    : { id: sceneId, name: sceneName, folder: sceneId };
+  const scenes = existing
+    ? project.scenes.map(scene => scene.id === sceneId ? sceneRef : scene)
+    : [...(project.scenes || []), sceneRef];
+  const nextProject = await saveProject(root, { ...project, scenes });
+
+  await ensureDirectory(root, ['scenes', sceneRef.folder || sceneId, 'objects']);
+  await ensureDirectory(root, ['scenes', sceneRef.folder || sceneId, 'dialogues']);
+  await ensureDirectory(root, ['scenes', sceneRef.folder || sceneId, 'assets']);
+  await saveSceneBundle(root, sceneRef, working.scene);
+  for (const entry of working.assets || []) await writePackageAsset(root, sceneRef, entry);
+
+  return { project: nextProject, projectData: nextProjectData, sceneRef };
+}

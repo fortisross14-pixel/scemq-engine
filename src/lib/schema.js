@@ -1,6 +1,6 @@
 import { slugify, uniqueId } from './id.js';
 
-export const SCHEMA_VERSION = '0.3';
+export const SCHEMA_VERSION = '0.4';
 
 export const EVENT_TYPES = [
   'onLook', 'onUse', 'onPickUp', 'onTalk', 'onGive', 'onOpen', 'onClose', 'onPush', 'onPull',

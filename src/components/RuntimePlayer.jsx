@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { clampCamera, depthZAtPoint, findPathInWalkAreas } from '../lib/geometry.js';
 import { findInventoryRecipe, inventoryRuleMatches } from '../lib/inventory.js';
+import { resolveDialogueStartNode } from '../lib/dialogue.js';
 
 function parseValue(value) {
   if (value === 'true') return true;
@@ -127,7 +128,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       if(action.type==='setVisualState'){const scoped=`${activeBundle?.meta?.sceneId||sceneRef.id}:${key}`;setRuntimePatch(s=>({...s,objectStates:{...s.objectStates,[scoped]:String(action.value||'default')}}))}
       if(action.type==='showObject'){const scoped=`${activeBundle?.meta?.sceneId||sceneRef.id}:${key}`;setRuntimePatch(s=>({...s,objectVisibility:{...s.objectVisibility,[scoped]:true}}))}
       if(action.type==='hideObject'){const scoped=`${activeBundle?.meta?.sceneId||sceneRef.id}:${key}`;setRuntimePatch(s=>({...s,objectVisibility:{...s.objectVisibility,[scoped]:false}}))}
-      if(action.type==='startDialogue')startDialogue(key||String(value),activeBundle);
+      if(action.type==='startDialogue')startDialogue(key||String(value),activeBundle,String(action.value||''));
       if(action.type==='changeScene'){
         const nextRef=project.scenes.find(s=>s.id===String(action.value||key)); if(nextRef){await runEvent('onLeaveScene','',activeBundle);await enterScene(nextRef,action.targetId||'default')}
       }
@@ -137,9 +138,10 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   async function executeRule(ruleId, activeBundle=bundleRef.current){const rule=findRule(ruleId,activeBundle);if(rule&&(!rule.event?.itemId||rule.event.itemId===selectedItem)&&rulePass(rule,activeBundle))await runActions(rule.actions,activeBundle)}
   async function runEvent(type,targetId,activeBundle=bundleRef.current){const interactionEvent=['onLook','onUse','onPickUp','onTalk','onGive','onOpen','onClose','onPush','onPull','onItemUsed'].includes(type);for(const rule of activeBundle?.logic.rules||[]){if(rule.event.type===type&&(!rule.event.targetId||rule.event.targetId===targetId)&&(!interactionEvent||!rule.event.verb||rule.event.verb===selectedVerb)&&(!interactionEvent||!rule.event.itemId||rule.event.itemId===selectedItem)&&rulePass(rule,activeBundle))await runActions(rule.actions,activeBundle)}}
 
-  function startDialogue(characterId, activeBundle=bundleRef.current){
+  function startDialogue(characterId, activeBundle=bundleRef.current, startNodeId=''){
     const d=activeBundle?.dialogues.find(x=>x.characterId===characterId); if(!d){setMessage('No dialogue is authored for this character.');return}
-    setDialogue({data:d,nodeId:d.entryNodeId,beatIndex:0});
+    const nodeId=resolveDialogueStartNode(d,startNodeId);
+    setDialogue({data:d,nodeId,beatIndex:0});
   }
   function chooseDialogueChoice(choice){
     if(choice.actions?.length)runActions(choice.actions);

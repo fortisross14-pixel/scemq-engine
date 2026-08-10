@@ -36,7 +36,7 @@ export function normalizeDialogueConfig(dialogue, characters, targetCharacterId 
   const displayName = characters.find(c => c.id === target)?.name || dialogue.displayName || target;
   return {
     ...dialogue,
-    schemaVersion: '0.3',
+    schemaVersion: '0.4',
     kind: 'scemq-scene-dialogue',
     characterId: target,
     displayName,
@@ -53,4 +53,10 @@ export function normalizeDialogueConfig(dialogue, characters, targetCharacterId 
 export function dialogueSpeakersAreValid(dialogue, characters) {
   const ids = new Set(characters.map(c => c.id));
   return (dialogue.nodes || []).every(node => (node.beats || []).every(beat => ids.has(beat.speakerId)));
+}
+
+export function resolveDialogueStartNode(dialogue, requestedNodeId = '') {
+  if (!dialogue) return '';
+  if (requestedNodeId && (dialogue.nodes || []).some(node => node.id === requestedNodeId)) return requestedNodeId;
+  return dialogue.entryNodeId || dialogue.nodes?.[0]?.id || '';
 }
