@@ -220,7 +220,9 @@ function migrateObject(object) {
     ? { characterId: object.character?.characterId || object.id, displayName: object.character?.displayName || object.name, role: object.character?.role || 'npc', walkSpeed: object.character?.walkSpeed || 180 }
     : null;
   const exit = object.type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, availabilityRuleId: '', hiddenUntilAvailable: false, blockedMessage: 'You cannot go there yet.', ...(object.exit || {}) } : null;
-  return { ...object, schemaVersion: '0.4', asset, transform: { ...object.transform, ...base.transform, ...(object.transform || {}) }, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
+  const hotspot = { enabled: object.type !== 'scenery', label: object.name, actions: {}, shape: 'visual', bounds: { x: 0, y: 0, width: 1, height: 1 }, alphaThreshold: 8, ...(object.hotspot || {}) };
+  hotspot.bounds = { x: 0, y: 0, width: 1, height: 1, ...(object.hotspot?.bounds || {}) };
+  return { ...object, schemaVersion: '0.4', asset, transform: { ...object.transform, ...base.transform, ...(object.transform || {}) }, hotspot, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
 }
 
 export async function loadSceneBundle(root, sceneRef) {

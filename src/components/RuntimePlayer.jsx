@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { clampCamera, depthZAtPoint, findPathInWalkAreas } from '../lib/geometry.js';
 import { findInventoryRecipe, inventoryRuleMatches } from '../lib/inventory.js';
 import { resolveDialogueStartNode } from '../lib/dialogue.js';
+import { alphaHit, hotspotRect } from '../lib/hotspot.js';
+
+function clamp01(value){return Math.max(0,Math.min(1,value))}
 
 function parseValue(value) {
   if (value === 'true') return true;
@@ -49,9 +52,13 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const runtimeRef = useRef(runtime);
   const bundleRef = useRef(bundle);
   const playerPosRef = useRef(playerPos);
+  const alphaMasksRef = useRef(new Map());
   useEffect(()=>{runtimeRef.current=runtime},[runtime]);
   useEffect(()=>{bundleRef.current=bundle},[bundle]);
   useEffect(()=>{playerPosRef.current=playerPos},[playerPos]);
+
+  function cacheAlphaMask(url,img){if(!url||!img||alphaMasksRef.current.has(url))return;try{const canvas=document.createElement('canvas');canvas.width=img.naturalWidth||img.width;canvas.height=img.naturalHeight||img.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);alphaMasksRef.current.set(url,ctx.getImageData(0,0,canvas.width,canvas.height))}catch{alphaMasksRef.current.set(url,null)}}
+  function alphaHotspotHit(e,obj,url){if((obj.hotspot?.shape||'visual')!=='alpha')return true;const mask=alphaMasksRef.current.get(url);if(!mask)return true;const hitRect=e.currentTarget.getBoundingClientRect();const b=obj.hotspot?.bounds||{x:0,y:0,width:1,height:1};const rx=hitRect.width?clamp01((e.clientX-hitRect.left)/hitRect.width):0,ry=hitRect.height?clamp01((e.clientY-hitRect.top)/hitRect.height):0;let nx=(b.x||0)+(obj.transform?.flipX?(1-rx):rx)*(b.width||1),ny=(b.y||0)+ry*(b.height||1);return alphaHit(mask,nx,ny,obj.hotspot?.alphaThreshold??8)}
 
   async function enterScene(ref, spawnPointId = null) {
     const loaded = await loadScene(ref);
@@ -195,7 +202,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     <div className="runtime-viewport" style={{left:ui.viewport.x,top:ui.viewport.y,width:ui.viewport.width,height:ui.viewport.height,cursor:projectData.assetUrls.ui?.[`cursor:${selectedVerb}`]?`url(${projectData.assetUrls.ui[`cursor:${selectedVerb}`]}), auto`:undefined}} onClick={clickWorld}>
       <div className="runtime-world" style={{width:bundle.visual.canvas.width,height:bundle.visual.canvas.height,transform:`translate(${-camera.x}px, ${-camera.y}px)`,backgroundColor:bundle.visual.canvas.backgroundColor}}>
         {bundle.assetUrls.__background&&<img className={`runtime-background fit-${bundle.visual.background.fit||'stretch'}`} src={bundle.assetUrls.__background} alt=""/>}
-        {viewportObjects.map(obj=>{const t=obj.transform;const url=activeObjectAsset(obj);return <div key={obj.id} className={`runtime-object ${obj.hotspot?.enabled?'clickable':''}`} style={{left:t.x,top:t.y,width:t.width,height:t.height,zIndex:t.z,opacity:t.opacity,transform:t.flipX?'scaleX(-1)':'none'}} onMouseEnter={()=>obj.hotspot?.enabled&&setHoverText(interactionLabel(obj,selectedVerb))} onMouseLeave={()=>setHoverText('')} onClick={(e)=>obj.hotspot?.enabled&&clickObject(e,obj)}>{url?<img src={url} alt="" draggable="false"/>:<div className="runtime-placeholder">{obj.name}</div>}{runtime.showHotspots&&obj.hotspot?.enabled?<div className="runtime-hotspot-debug"/>:null}</div>})}
+        {viewportObjects.map(obj=>{const t=obj.transform,url=activeObjectAsset(obj),hr=hotspotRect(obj);return <React.Fragment key={obj.id}><div className="runtime-object runtime-visual-object" style={{left:t.x,top:t.y,width:t.width,height:t.height,zIndex:t.z,opacity:t.opacity,transform:t.flipX?'scaleX(-1)':'none'}}>{url?<img src={url} alt="" draggable="false" onLoad={e=>obj.hotspot?.shape==='alpha'&&cacheAlphaMask(url,e.currentTarget)}/>:<div className="runtime-placeholder">{obj.name}</div>}</div>{obj.hotspot?.enabled&&<div className={`runtime-hotspot-target clickable shape-${obj.hotspot?.shape||'visual'} ${runtime.showHotspots?'debug':''}`} style={{left:hr.x,top:hr.y,width:hr.width,height:hr.height,zIndex:t.z}} onMouseMove={e=>{const hit=alphaHotspotHit(e,obj,url);e.currentTarget.style.cursor=hit?'pointer':'default';setHoverText(hit?interactionLabel(obj,selectedVerb):'')}} onMouseLeave={()=>setHoverText('')} onClick={e=>{if(alphaHotspotHit(e,obj,url))clickObject(e,obj)}}>{runtime.showHotspots?<span>{obj.hotspot.label||obj.name}</span>:null}</div>}</React.Fragment>})}
         {playerObject&&<div className="runtime-object runtime-player" style={{left:playerPos.x-playerT.width*anchorX,top:playerPos.y-playerT.height*anchorY,width:playerT.width,height:playerT.height,zIndex:playerZ,opacity:playerT.opacity,transform:playerT.flipX?'scaleX(-1)':'none'}}>{activePlayerAsset()?<img src={activePlayerAsset()} alt="" draggable="false"/>:<div className="runtime-placeholder">{playerObject.name}</div>}</div>}
       </div>
     </div>

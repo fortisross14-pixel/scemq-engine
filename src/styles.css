@@ -312,3 +312,18 @@ textarea { resize: vertical; }
 
 /* SCEMQ v0.4 portable scene packages */
 .package-import-modal{width:min(920px,92vw);max-height:88vh;overflow:auto}.package-modal-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}.package-modal-head h2{margin:4px 0}.package-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}.package-dependency-group{border:1px solid #363c48;border-radius:10px;padding:10px;background:#171a20}.package-dependency-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#d4ad67;margin-bottom:7px}.package-dependency-row{display:flex;justify-content:space-between;gap:14px;align-items:center;border-top:1px solid #292e37;padding:7px 0}.package-dependency-row:first-of-type{border-top:0}.package-dependency-row span:first-child{display:flex;flex-direction:column}.package-dependency-row small{color:#7f8794}.package-status{font-size:11px;border-radius:999px;padding:3px 7px;white-space:nowrap}.package-status.reuse{background:#26382f;color:#9ed3ac}.package-status.create{background:#403821;color:#e4c27a}.package-status.unresolved{background:#402929;color:#e6a0a0}.package-empty{color:#777f8a;font-size:12px}.package-soft-note,.package-conflict,.package-errors{border-radius:9px;padding:11px 13px;margin:10px 0}.package-soft-note{background:#202b35;color:#b8cde0}.package-conflict{background:#332d20}.package-conflict p{margin:6px 0 0;color:#cfc7b6}.package-errors{background:#3a2023;color:#f0b7bb}.package-errors div{margin-top:5px}.package-actions{position:sticky;bottom:-16px;background:#20242b;padding-top:14px}.sidebar-import-row{display:flex;gap:6px}.sidebar-import-row .small-button{white-space:nowrap}@media(max-width:760px){.package-summary-grid{grid-template-columns:1fr}}
+
+/* SCEMQ v0.4.1 independent hotspot geometry */
+.hotspot-overlay { box-sizing:border-box; }
+.hotspot-overlay.editable { pointer-events:auto; cursor:move; background:rgba(43,171,151,.12); }
+.hotspot-overlay.shape-alpha { border-style:dotted; }
+.hotspot-handle { position:absolute; width:12px; height:12px; border:2px solid #10221f; background:#62d6c0; border-radius:2px; transform:translate(-50%,-50%); pointer-events:auto; }
+.hotspot-handle.nw{left:0;top:0;cursor:nwse-resize}.hotspot-handle.ne{left:100%;top:0;cursor:nesw-resize}.hotspot-handle.sw{left:0;top:100%;cursor:nesw-resize}.hotspot-handle.se{left:100%;top:100%;cursor:nwse-resize}
+.hotspot-bound-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.hotspot-actions { display:flex; gap:7px; margin:8px 0 12px; }
+.hotspot-actions button { flex:1; }
+.runtime-visual-object { pointer-events:none; }
+.runtime-hotspot-target { position:absolute; background:transparent; }
+.runtime-hotspot-target.debug { border:2px dashed #4ac9ad; background:rgba(45,190,160,.08); box-sizing:border-box; }
+.runtime-hotspot-target.shape-alpha.debug { border-style:dotted; }
+.runtime-hotspot-target span { position:absolute; top:2px; left:2px; font-size:9px; padding:2px 4px; background:rgba(20,78,69,.9); color:#aee8dd; pointer-events:none; }
