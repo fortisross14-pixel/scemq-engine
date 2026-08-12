@@ -1,5 +1,19 @@
 export function pointInPolygon(point, polygon = []) {
   if (!polygon || polygon.length < 3) return false;
+  // Treat polygon edges as valid walk space. This matters because clamping an
+  // out-of-bounds destination naturally lands on an edge. The old pure
+  // ray-cast considered some edge points outside, which could make a player
+  // appear to escape or become stuck at the boundary.
+  const epsilon = 0.75;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    if (!lenSq) continue;
+    const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq));
+    const px = a.x + t * dx, py = a.y + t * dy;
+    if (Math.hypot(point.x - px, point.y - py) <= epsilon) return true;
+  }
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const xi = polygon[i].x, yi = polygon[i].y;
@@ -56,6 +70,27 @@ export function clampCamera(camera, canvas, viewport, bounds) {
     x: Math.max(b.x, Math.min(maxX, camera.x)),
     y: Math.max(b.y, Math.min(maxY, camera.y))
   };
+}
+
+export function anchoredVisualCenter(point, transform = {}) {
+  const width = Number(transform.width || 0);
+  const height = Number(transform.height || 0);
+  const anchorX = transform.anchorX ?? 0.5;
+  const anchorY = transform.anchorY ?? 1;
+  return {
+    x: point.x + width * (0.5 - anchorX),
+    y: point.y + height * (0.5 - anchorY)
+  };
+}
+
+export function followCameraForCharacter(point, transform, canvas, viewport) {
+  const center = anchoredVisualCenter(point, transform);
+  return clampCamera(
+    { x: center.x - viewport.width / 2, y: center.y - viewport.height / 2 },
+    canvas,
+    viewport,
+    { x: 0, y: 0, width: canvas.width, height: canvas.height }
+  );
 }
 
 function pointInAny(point, areas) {

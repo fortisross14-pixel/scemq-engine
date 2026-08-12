@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas } from './geometry.js';
+import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas, followCameraForCharacter } from './geometry.js';
 
 const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
 
@@ -43,4 +43,21 @@ test('path finder refuses to cross disconnected walk areas', () => {
     { enabled: true, points: right }
   ]);
   assert.deepEqual(path, []);
+});
+
+test('follow camera centers visible character rather than feet', () => {
+  const point = { x: 800, y: 700 };
+  const transform = { width: 100, height: 300, anchorX: 0.5, anchorY: 1 };
+  const camera = followCameraForCharacter(point, transform, { width: 1600, height: 1000 }, { width: 800, height: 600 });
+  // Visible center is y=550, so the desired camera top is 250.
+  assert.equal(camera.x, 400);
+  assert.equal(camera.y, 250);
+});
+
+test('follow camera stops only at actual scene edges', () => {
+  const transform = { width: 100, height: 300, anchorX: 0.5, anchorY: 1 };
+  const viewport = { width: 800, height: 600 };
+  const canvas = { width: 1600, height: 1000 };
+  assert.deepEqual(followCameraForCharacter({ x: 50, y: 180 }, transform, canvas, viewport), { x: 0, y: 0 });
+  assert.deepEqual(followCameraForCharacter({ x: 1550, y: 980 }, transform, canvas, viewport), { x: 800, y: 400 });
 });

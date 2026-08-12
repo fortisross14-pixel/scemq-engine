@@ -92,3 +92,12 @@ test('visual config carries editable title screen controls', () => {
   assert.equal(visual.titleScreen.loadGame.label, 'Load Game');
   assert.ok(visual.titleScreen.titleTransform.width > 0);
 });
+
+// v0.5.2 geometry regression: a point clamped onto a walk polygon edge must
+// remain valid walk space instead of being treated as outside on the next tick.
+test('walk polygon edges count as inside', async () => {
+  const { pointInPolygon } = await import('./geometry.js');
+  const polygon = [{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}];
+  assert.equal(pointInPolygon({x:50,y:100}, polygon), true);
+  assert.equal(pointInPolygon({x:0,y:30}, polygon), true);
+});

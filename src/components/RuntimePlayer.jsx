@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { clampCamera, clampPointToWalkAreas, depthZAtPoint, findPathInWalkAreas } from '../lib/geometry.js';
+import { clampCamera, clampPointToWalkAreas, depthZAtPoint, findPathInWalkAreas, followCameraForCharacter } from '../lib/geometry.js';
 import { findInventoryRecipe, inventoryEventTypeForVerb, inventoryRuleMatches, inventoryVerbEnabled } from '../lib/inventory.js';
 import { resolveDialogueStartNode } from '../lib/dialogue.js';
 import { alphaHit, hotspotRect } from '../lib/hotspot.js';
@@ -93,8 +93,12 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
 
   function cameraForPoint(point, activeBundle=bundleRef.current){
     if(!activeBundle||activeBundle.meta?.sceneType==='title'||activeBundle.visual.viewport.followPlayer===false)return null;
-    const vp=ui.viewport;const cfg=activeBundle.visual.viewport;
-    return clampCamera({x:point.x-vp.width/2,y:point.y-vp.height/2},activeBundle.visual.canvas,vp,cameraBounds(cfg,activeBundle.visual.canvas));
+    const playerId=activeBundle.visual.player?.characterObjectId;
+    const obj=activeBundle.objects?.find(o=>o.id===playerId) || activeBundle.objects?.find(o=>o.type==='character'&&o.character?.role==='playable');
+    // Follow mode is intentionally strict and simple: center the visible
+    // character and clamp only to the actual scene edges. Custom/manual
+    // camera limits must never pin a following camera.
+    return followCameraForCharacter(point,obj?.transform||{},activeBundle.visual.canvas,ui.viewport);
   }
   function applyPlayerPosition(point,activeBundle=bundleRef.current,{clampToWalk=true}={}){
     if(!activeBundle)return point;
