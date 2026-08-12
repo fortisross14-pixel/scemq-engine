@@ -354,3 +354,7 @@ textarea { resize: vertical; }
 .runtime-title-button { position:absolute; z-index:11; border:1px solid rgba(255,255,255,.18); cursor:pointer; }
 .runtime-title-button:hover { filter:brightness(1.12); }
 .runtime-title-message { position:absolute; left:20%; right:20%; bottom:8%; z-index:12; padding:12px 16px; background:rgba(0,0,0,.65); color:#eee9dc; text-align:center; }
+
+/* v0.5.3: authoritative character feet anchor */
+.foot-anchor-marker{position:absolute;width:18px;height:18px;border-radius:50%;border:3px solid #76e4d0;background:#123a36;box-shadow:0 0 0 1px #071d1b;z-index:10001;cursor:crosshair;pointer-events:auto!important;transform:var(--unflip, none)}
+.foot-anchor-marker::before,.foot-anchor-marker::after{content:'';position:absolute;background:#b8fff3;opacity:.9;pointer-events:none}.foot-anchor-marker::before{width:22px;height:2px;left:-5px;top:5px}.foot-anchor-marker::after{width:2px;height:22px;left:5px;top:-5px}.foot-anchor-marker span{position:absolute;left:16px;top:-5px;font-size:8px;line-height:1;background:#123a36;color:#b8fff3;border:1px solid #4ab8a6;border-radius:3px;padding:2px 4px;white-space:nowrap;pointer-events:none}
