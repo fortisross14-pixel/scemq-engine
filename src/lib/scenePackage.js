@@ -6,7 +6,7 @@ function actionRefs(actions = [], refs) {
   for (const action of actions || []) {
     if (!action) continue;
     if (action.type === 'giveItem' || action.type === 'removeItem') refs.inventory.add(action.targetId || action.value || '');
-    if (action.type === 'startDialogue') refs.characters.add(action.targetId || '');
+    if (action.type === 'startDialogue' || action.type === 'playAnimation') refs.characters.add(action.targetId || '');
     if (action.type === 'setVariable') refs.variables.add(action.targetId || '');
     if (action.type === 'changeScene') refs.scenes.add(action.value || action.targetId || '');
   }
@@ -34,7 +34,10 @@ export function collectSceneReferences(scene = {}) {
     if (event.type === 'onInventoryCombine') {
       if (event.itemId) refs.inventory.add(event.itemId);
       if (event.targetId) refs.inventory.add(event.targetId);
-    } else if (event.itemId) refs.inventory.add(event.itemId);
+    } else {
+      if (event.targetType === 'inventory' && event.targetId) refs.inventory.add(event.targetId);
+      if (event.itemId) refs.inventory.add(event.itemId);
+    }
     conditionRefs(rule.conditions, refs);
     actionRefs(rule.actions, refs);
   }
@@ -149,6 +152,7 @@ export function analyzeScenePackage(pkg, project = {}, projectData = {}) {
     }
   };
   for (const rule of pkg?.scene?.logic?.rules || []) {
+    if (rule.event?.targetType === 'inventory' && rule.event?.targetId && !existingInventory.has(rule.event.targetId) && !includedInventory.has(rule.event.targetId)) errors.push(`Rule "${rule.name || rule.id}" targets missing inventory item "${rule.event.targetId}".`);
     if (rule.event?.targetType !== 'inventory' && rule.event?.targetId && !objectIds.has(rule.event.targetId)) errors.push(`Rule "${rule.name || rule.id}" targets missing object "${rule.event.targetId}".`);
     checkActions(rule.actions);
   }

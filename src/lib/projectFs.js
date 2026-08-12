@@ -8,8 +8,10 @@ import {
   createProjectVariables,
   createSceneManifest,
   createVisualConfig,
+  INVENTORY_VERBS,
 } from './schema.js';
 import { nextSceneId, slugify } from './id.js';
+import { characterAnimationAssetKey, normalizeCharacterAnimationData } from './animation.js';
 
 function requireDirectoryPicker() {
   if (!window.showDirectoryPicker) {
@@ -99,11 +101,12 @@ export async function loadProjectBundle(root, manifest) {
   const { projectDir, charactersDir, inventoryDir } = await ensureProjectModules(root, manifest);
   const ui = await readJson(projectDir, 'project.ui.json');
   const variables = await readJson(projectDir, 'project.variables.json');
-  const settings = await readJson(projectDir, 'project.settings.json');
-  const characters = (await scanJsonDirectory(charactersDir, '.character.json')).map(c => ({ ...c, schemaVersion: '0.4' }));
+  const settings = { ...createProjectSettings(manifest.name), ...(await readJson(projectDir, 'project.settings.json')) };
+  const characters = (await scanJsonDirectory(charactersDir, '.character.json')).map(c => normalizeCharacterAnimationData({ ...c, schemaVersion: '0.4' }));
   const inventory = (await scanJsonDirectory(inventoryDir, '.item.json')).map(item => ({
     ...item,
     schemaVersion: '0.4',
+    interactions: { ...Object.fromEntries(INVENTORY_VERBS.map((verb) => [verb, true])), ...(item.interactions || {}) },
     combinations: (item.combinations || []).map(combo => ({ ...combo, bidirectional: combo.bidirectional ?? true }))
   }));
   const assetUrls = { ui: {}, characters: {}, inventory: {} };
@@ -112,6 +115,10 @@ export async function loadProjectBundle(root, manifest) {
     for (const [slot, path] of Object.entries(character.assets || {})) {
       if (!path) continue;
       try { assetUrls.characters[`${character.id}:${slot}`] = await readProjectAssetUrl(root, 'characters', path); } catch {}
+    }
+    for (const [name, animation] of Object.entries(character.animations || {})) {
+      if (!animation?.src) continue;
+      try { assetUrls.characters[characterAnimationAssetKey(character.id, name)] = await readProjectAssetUrl(root, 'characters', animation.src); } catch {}
     }
   }
   for (const item of inventory) {
@@ -157,23 +164,25 @@ export async function saveProjectBundle(root, data) {
   }
 }
 
-export async function createScene(root, project, sceneName) {
-  const sceneId = nextSceneId(project.scenes);
+export async function createScene(root, project, sceneName, options = {}) {
+  const sceneType = options.sceneType === 'title' ? 'title' : 'gameplay';
+  const sceneId = options.sceneId || (sceneType === 'title' && !project.scenes.some((scene) => scene.id === 'scene0') ? 'scene0' : nextSceneId(project.scenes));
   const sceneFolder = sceneId;
   const sceneDir = await ensureDirectory(root, ['scenes', sceneFolder]);
   await ensureDirectory(sceneDir, ['objects']);
   await ensureDirectory(sceneDir, ['dialogues']);
   await ensureDirectory(sceneDir, ['assets']);
 
-  const meta = createSceneManifest(sceneId, sceneName);
+  const meta = createSceneManifest(sceneId, sceneName, sceneType);
   const visual = createVisualConfig(sceneId);
+  if (sceneType === 'title') { visual.canvas = { ...visual.canvas, width: 1280, height: 900 }; visual.titleScreen = { ...visual.titleScreen, title: project.name || sceneName }; }
   const logic = createLogicConfig(sceneId);
 
   await writeJson(sceneDir, `scene.meta.${sceneId}.json`, meta);
   await writeJson(sceneDir, `scene.visual.${sceneId}.json`, visual);
   await writeJson(sceneDir, `scene.logic.${sceneId}.json`, logic);
 
-  const nextProject = { ...project, scenes: [...project.scenes, { id: sceneId, name: sceneName, folder: sceneFolder }] };
+  const nextProject = { ...project, scenes: [...project.scenes, { id: sceneId, name: sceneName, folder: sceneFolder, sceneType }] };
   return { sceneId, project: await saveProject(root, nextProject) };
 }
 
@@ -192,6 +201,14 @@ function migrateVisual(visual) {
     ...visual,
     schemaVersion: '0.4',
     background: { ...base.background, ...(visual.background || {}) },
+    titleScreen: {
+      ...base.titleScreen,
+      ...(visual.titleScreen || {}),
+      titleTransform: { ...base.titleScreen.titleTransform, ...(visual.titleScreen?.titleTransform || {}) },
+      titleStyle: { ...base.titleScreen.titleStyle, ...(visual.titleScreen?.titleStyle || {}) },
+      newGame: { ...base.titleScreen.newGame, ...(visual.titleScreen?.newGame || {}), transform: { ...base.titleScreen.newGame.transform, ...(visual.titleScreen?.newGame?.transform || {}) }, style: { ...base.titleScreen.newGame.style, ...(visual.titleScreen?.newGame?.style || {}) } },
+      loadGame: { ...base.titleScreen.loadGame, ...(visual.titleScreen?.loadGame || {}), transform: { ...base.titleScreen.loadGame.transform, ...(visual.titleScreen?.loadGame?.transform || {}) }, style: { ...base.titleScreen.loadGame.style, ...(visual.titleScreen?.loadGame?.style || {}) } }
+    },
     viewport: {
       ...base.viewport,
       ...(visual.viewport || {}),
@@ -232,7 +249,8 @@ export async function loadSceneBundle(root, sceneRef) {
   const dialoguesDir = await ensureDirectory(sceneDir, ['dialogues']);
   const assetsDir = await ensureDirectory(sceneDir, ['assets']);
 
-  const meta = await readJson(sceneDir, `scene.meta.${sceneId}.json`);
+  const rawMeta = await readJson(sceneDir, `scene.meta.${sceneId}.json`);
+  const meta = { ...rawMeta, sceneType: rawMeta.sceneType || 'gameplay' };
   const visual = migrateVisual(await readJson(sceneDir, `scene.visual.${sceneId}.json`));
   const logic = await readJson(sceneDir, `scene.logic.${sceneId}.json`);
   const scannedObjects = (await scanJsonDirectory(objectsDir, `.object.${sceneId}.json`)).map(migrateObject);
@@ -395,7 +413,10 @@ export async function embedScenePackageAssets(root, sceneRef, pkg) {
   }
 
   const characterAssets = await ensureDirectory(root, ['assets', 'characters']);
-  for (const character of pkg.dependencies?.characters || []) for (const path of Object.values(character.assets || {})) await push(characterAssets, path, 'characters');
+  for (const character of pkg.dependencies?.characters || []) {
+    for (const path of Object.values(character.assets || {})) await push(characterAssets, path, 'characters');
+    for (const animation of Object.values(character.animations || {})) await push(characterAssets, animation?.src, 'characters');
+  }
   const inventoryAssets = await ensureDirectory(root, ['assets', 'inventory']);
   for (const item of pkg.dependencies?.inventory || []) {
     await push(inventoryAssets, item.asset, 'inventory');
@@ -429,12 +450,14 @@ export async function applyScenePackage(root, project, projectData, pkg, { mode 
   if (existing && mode !== 'replace') throw new Error(`Scene ${sceneId} already exists.`);
 
   let nextProjectData = mergeDependencies(projectData, working);
-  if (!nextProjectData.settings?.defaultSceneId) nextProjectData = { ...nextProjectData, settings: { ...(nextProjectData.settings || {}), defaultSceneId: sceneId } };
+  const importedType = working.scene?.meta?.sceneType || 'gameplay';
+  if (importedType === 'title' && !nextProjectData.settings?.titleSceneId) nextProjectData = { ...nextProjectData, settings: { ...(nextProjectData.settings || {}), titleSceneId: sceneId } };
+  if (importedType !== 'title' && !nextProjectData.settings?.defaultSceneId) nextProjectData = { ...nextProjectData, settings: { ...(nextProjectData.settings || {}), defaultSceneId: sceneId } };
   await saveProjectBundle(root, nextProjectData);
 
   const sceneRef = existing
-    ? { ...existing, name: sceneName }
-    : { id: sceneId, name: sceneName, folder: sceneId };
+    ? { ...existing, name: sceneName, sceneType: importedType }
+    : { id: sceneId, name: sceneName, folder: sceneId, sceneType: importedType };
   const scenes = existing
     ? project.scenes.map(scene => scene.id === sceneId ? sceneRef : scene)
     : [...(project.scenes || []), sceneRef];

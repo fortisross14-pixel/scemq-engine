@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createInventoryItem, createObjectConfig, createProjectUi, createRule, createVisualConfig } from './schema.js';
+import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createInventoryItem, createObjectConfig, createProjectSettings, createProjectUi, createRule, createSceneManifest, createVisualConfig } from './schema.js';
 
 test('scene character objects reference project characters', () => {
   const character = { ...createCharacterDefinition('Captain Nib'), id: 'captain-nib' };
@@ -57,4 +57,38 @@ test('exit objects support rule-gated visibility and blocking', () => {
 test('inventory items can customize pickup popup text', () => {
   const item = createInventoryItem('Short Ruler');
   assert.equal(item.pickupMessage, '');
+});
+
+test('inventory items expose adventure verbs by default', () => {
+  const item = createInventoryItem('Rolled Form');
+  assert.equal(item.interactions.open, true);
+  assert.equal(item.interactions.look, true);
+  assert.equal(item.interactions.give, true);
+  assert.equal(Object.hasOwn(item.interactions, 'walk'), false);
+});
+
+test('character definitions support named animation libraries',()=>{
+ const character=createCharacterDefinition('Mara');
+ assert.deepEqual(character.animations,{});
+ assert.equal(character.actionAnimations.pickUp,'pickup');
+ assert.equal(Array.isArray(character.idleVariants),true);
+});
+
+
+test('project settings support a separate title scene and gameplay start scene', () => {
+  const settings = createProjectSettings('Test');
+  assert.equal(settings.titleSceneId, '');
+  assert.equal(settings.defaultSceneId, '');
+});
+
+test('scene metadata can identify a title screen', () => {
+  const meta = createSceneManifest('scene0', 'Home', 'title');
+  assert.equal(meta.sceneType, 'title');
+});
+
+test('visual config carries editable title screen controls', () => {
+  const visual = createVisualConfig('scene0');
+  assert.equal(visual.titleScreen.newGame.label, 'New Game');
+  assert.equal(visual.titleScreen.loadGame.label, 'Load Game');
+  assert.ok(visual.titleScreen.titleTransform.width > 0);
 });

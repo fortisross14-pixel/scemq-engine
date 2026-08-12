@@ -36,6 +36,12 @@ export function nearestPointInPolygons(point, polygons = []) {
   return best || { ...point };
 }
 
+export function clampPointToWalkAreas(point, areas = []) {
+  const enabled = areas.filter((area) => area.enabled !== false && area.points?.length >= 3);
+  if (!enabled.length) return { ...point };
+  return nearestPointInPolygons(point, enabled);
+}
+
 export function depthZAtPoint(point, depthAreas = [], fallback = 30) {
   const matching = depthAreas.filter((area) => area.enabled !== false && area.points?.length >= 3 && pointInPolygon(point, area.points));
   if (!matching.length) return fallback;
@@ -102,7 +108,7 @@ export function findPathInWalkAreas(start, requestedTarget, areas = []) {
       if (alt < dist[v]) { dist[v] = alt; prev[v] = u; }
     }
   }
-  if (!Number.isFinite(dist[1])) return [target];
+  if (!Number.isFinite(dist[1])) return [];
   const indices = [];
   for (let at = 1; at !== -1; at = prev[at]) indices.push(at);
   indices.reverse();

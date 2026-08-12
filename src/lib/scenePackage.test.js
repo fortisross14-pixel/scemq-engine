@@ -58,3 +58,20 @@ test('package analysis rejects a missing dialogue start node',()=>{
  const report=analyzeScenePackage(pkg,{scenes:[]},{characters:[],inventory:[],variables:{variables:[]}});
  assert.equal(report.errors.some(e=>e.includes('does-not-exist')),true);
 });
+
+test('inventory-targeted rules declare the target item as a portable dependency',()=>{
+ const scene=sampleScene();
+ scene.logic.rules.push({id:'open-form',name:'Open form',event:{type:'onOpen',targetType:'inventory',targetId:'rolled-form',verb:'open',itemId:''},conditions:[],actions:[]});
+ const refs=collectSceneReferences(scene);
+ assert.equal(refs.inventory.has('rolled-form'),true);
+ const pkg={kind:'scemq-scene-package',packageVersion:1,sceneId:'scene1',scene,dependencies:{characters:[{id:'mara',name:'Mara'},{id:'pindle',name:'Pindle'}],inventory:[{id:'short-ruler',name:'Short'},{id:'rolled-form',name:'Rolled Form'}],variables:[{id:'globalDay',name:'Day'}]}};
+ const report=analyzeScenePackage(pkg,{scenes:[]},{characters:[],inventory:[],variables:{variables:[]}});
+ assert.equal(report.errors.length,0);
+});
+
+test('playAnimation actions make the character a portable scene dependency',()=>{
+ const scene=sampleScene();
+ scene.logic.rules.push({id:'anim',name:'Animate Mara',event:{type:'onEnterScene',targetType:'scene',targetId:'',verb:'',itemId:''},conditions:[],actions:[{type:'playAnimation',targetId:'mara',value:'shrug',waitForCompletion:true}]});
+ const refs=collectSceneReferences(scene);
+ assert.equal(refs.characters.has('mara'),true);
+});

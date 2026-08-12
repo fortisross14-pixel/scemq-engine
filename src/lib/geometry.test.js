@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pointInPolygon, nearestPointInPolygons, depthZAtPoint, clampCamera } from './geometry.js';
+import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas } from './geometry.js';
 
 const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
 
@@ -29,4 +29,18 @@ test('path finder routes around a concave forbidden notch', async () => {
   const path = findPathInWalkAreas({x:20,y:80},{x:80,y:20},[{enabled:true,points:concave}]);
   assert.ok(path.length >= 2);
   assert.deepEqual(path.at(-1), {x:80,y:20});
+});
+
+
+test('spawn point outside walk area clamps to nearest valid point', () => {
+  assert.deepEqual(clampPointToWalkAreas({ x: 150, y: 40 }, [{ enabled: true, points: square }]), { x: 100, y: 40 });
+});
+
+test('path finder refuses to cross disconnected walk areas', () => {
+  const right = square.map((p) => ({ x: p.x + 200, y: p.y }));
+  const path = findPathInWalkAreas({ x: 20, y: 20 }, { x: 240, y: 20 }, [
+    { enabled: true, points: square },
+    { enabled: true, points: right }
+  ]);
+  assert.deepEqual(path, []);
 });

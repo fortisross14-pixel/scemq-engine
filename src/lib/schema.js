@@ -1,3 +1,4 @@
+import { DEFAULT_ACTION_ANIMATIONS } from './animation.js';
 import { slugify, uniqueId } from './id.js';
 
 export const SCHEMA_VERSION = '0.4';
@@ -10,11 +11,12 @@ export const EVENT_TYPES = [
 export const ACTION_TYPES = [
   'say', 'setFlag', 'setVariable', 'giveItem', 'removeItem',
   'setVisualState', 'showObject', 'hideObject', 'moveCharacter',
-  'changeScene', 'startDialogue'
+  'changeScene', 'startDialogue', 'playAnimation'
 ];
 
 export const OBJECT_TYPES = ['scenery', 'prop', 'character', 'hotspot', 'exit'];
 export const VERBS = ['walk', 'look', 'use', 'talk', 'pickUp', 'give', 'open', 'close', 'push', 'pull'];
+export const INVENTORY_VERBS = VERBS.filter((verb) => verb !== 'walk');
 export const UI_ELEMENT_TYPES = ['verbButton', 'inventory', 'statusText', 'button', 'panel', 'text', 'image'];
 export const UI_ACTION_TYPES = ['none', 'selectVerb', 'openSave', 'openLoad', 'toggleHotspots', 'pause', 'customRule'];
 export const VARIABLE_TYPES = ['boolean', 'number', 'string'];
@@ -37,6 +39,7 @@ export function createProjectSettings(name = 'Untitled Project') {
     schemaVersion: SCHEMA_VERSION,
     kind: 'scemq-project-settings',
     title: name,
+    titleSceneId: '',
     defaultSceneId: '',
     defaultSpawnPointId: 'default',
     saveSlots: 3,
@@ -103,7 +106,11 @@ export function createCharacterDefinition(name = 'New Character') {
     walkSpeed: 180,
     defaultFacing: 'right',
     notes: '',
-    assets: { portrait: '', idle: '', walkLeft: '', walkRight: '', walkUp: '', walkDown: '' }
+    assets: { portrait: '', idle: '', walkLeft: '', walkRight: '', walkUp: '', walkDown: '' },
+    animations: {},
+    defaultAnimation: '',
+    actionAnimations: { ...DEFAULT_ACTION_ANIMATIONS },
+    idleVariants: []
   };
 }
 
@@ -121,16 +128,18 @@ export function createInventoryItem(name = 'New Item') {
     initiallyOwned: false,
     persistent: true,
     stackable: false,
+    interactions: Object.fromEntries(INVENTORY_VERBS.map((verb) => [verb, true])),
     combinations: []
   };
 }
 
-export function createSceneManifest(sceneId, name = 'Untitled Scene') {
+export function createSceneManifest(sceneId, name = 'Untitled Scene', sceneType = 'gameplay') {
   return {
     schemaVersion: SCHEMA_VERSION,
     kind: 'scemq-scene-meta',
     sceneId,
     name,
+    sceneType,
     notes: '',
     audio: { music: '', ambient: '' },
     createdAt: new Date().toISOString(),
@@ -145,6 +154,13 @@ export function createVisualConfig(sceneId) {
     sceneId,
     canvas: { width: 1600, height: 900, backgroundColor: '#20242b' },
     background: { path: '', fit: 'stretch' },
+    titleScreen: {
+      title: '',
+      titleTransform: { x: 160, y: 120, width: 960, height: 110 },
+      titleStyle: { fontSize: 54, color: '#f0dfb0', background: 'transparent' },
+      newGame: { label: 'New Game', transform: { x: 490, y: 560, width: 300, height: 64 }, style: { fontSize: 22, color: '#eee9dc', background: '#292d35' } },
+      loadGame: { label: 'Load Game', transform: { x: 490, y: 640, width: 300, height: 64 }, style: { fontSize: 22, color: '#eee9dc', background: '#292d35' } }
+    },
     viewport: {
       followPlayer: true,
       startX: 0,
