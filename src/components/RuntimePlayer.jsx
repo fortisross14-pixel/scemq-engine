@@ -6,7 +6,7 @@ import { resolveDialogueStartNode } from '../lib/dialogue.js';
 import { alphaHit, hotspotRect } from '../lib/hotspot.js';
 import { speechAnchorForActor, speechColorFor, speechDurationMs } from '../lib/speech.js';
 import { fallbackResponse } from '../lib/responses.js';
-import { ruleEventMatches } from '../lib/interaction.js';
+import { authoredRulesForInteraction, eventTypeForVerb, ruleEventMatches } from '../lib/interaction.js';
 import { delay, parseDurationMs, parsePoint } from '../lib/cutscene.js';
 import { AudioEngine } from '../lib/audio.js';
 import { AUTOSAVE_SLOT, createSaveRecord, formatPlaytime, listSaves, readSave, writeSave } from '../lib/saves.js';
@@ -559,10 +559,19 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     }
     if(binding?.dialogueId){startDialogue(binding.dialogueId);explicitHandled=true}
     if(!binding?.ruleId&&!binding?.dialogueId){
-      const eventType={look:'onLook',use:'onUse',talk:'onTalk',pickUp:'onPickUp',give:'onGive',open:'onOpen',close:'onClose',push:'onPush',pull:'onPull'}[verb];
+      // AUTO BINDING: logic rules are authoritative. A generated scene only needs to
+      // declare event.targetId + verb; hotspot.actions is optional and acts as an override.
+      const eventType=eventTypeForVerb(verb);
+      const authored=authoredRulesForInteraction(bundleRef.current?.logic?.rules||[],{targetId:obj.id,targetType:'object',verb});
       const handled=eventType?await runEvent(eventType,obj.id,bundleRef.current,'object',{verb,itemId:selectedItem}):0;
       if(!handled&&verb==='talk'&&obj.type==='character'&&obj.character?.characterId&&bundleRef.current?.dialogues?.some(d=>d.characterId===obj.character.characterId)){startDialogue(obj.character.characterId,bundleRef.current);return}
-      if(!handled)sayLine(fallbackResponse(settings,verb,objectLabel(obj)),playerDefinition?.id||'',{await:false});
+      if(!handled){
+        // If authored rules exist but none currently match their conditions/item requirement,
+        // this is a normal puzzle-state miss, not a broken binding. Keep the game response
+        // friendly while exposing useful diagnostics in dev/editor consoles.
+        if(authored.length)console.info('[SCEMQ] Auto-bound rules found but none passed for interaction',{objectId:obj.id,verb,itemId:selectedItem,ruleIds:authored.map(r=>r.id)});
+        sayLine(fallbackResponse(settings,verb,objectLabel(obj)),playerDefinition?.id||'',{await:false});
+      }
     }
   }
 

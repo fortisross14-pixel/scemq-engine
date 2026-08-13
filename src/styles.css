@@ -487,3 +487,10 @@ textarea { resize: vertical; }
 
 .character-ratio-probe{display:none!important}
 .runtime-interaction-warning{position:absolute;left:50%;top:56px;transform:translateX(-50%);z-index:13000;max-width:min(680px,80%);padding:9px 14px;border:1px solid #b75e55;border-radius:5px;background:rgba(52,20,18,.94);color:#ffd2cc;font-size:12px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.35);pointer-events:none;text-align:center}
+
+
+/* v0.6.5 automatic hotspot rule discovery */
+.auto-rule-panel{margin:8px 0 10px;padding:9px;border:1px solid rgba(91,196,142,.45);border-radius:7px;background:rgba(38,99,67,.12)}
+.auto-rule-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#8fe0b2;margin-bottom:6px}
+.auto-rule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;padding:6px 0;border-top:1px solid rgba(255,255,255,.07)}
+.auto-rule-row:first-of-type{border-top:0}.auto-rule-row strong{font-size:12px}.auto-rule-row code{font-size:10px;color:#a8b1bf}.auto-rule-row small{grid-column:1/-1;color:#94a0ae;font-size:10px}
