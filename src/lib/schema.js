@@ -157,6 +157,8 @@ export function createInventoryItem(name = 'New Item') {
     name,
     description: '',
     pickupMessage: '',
+    folder: '',
+    sourceSceneId: '',
     asset: '',
     cursorAsset: '',
     initiallyOwned: false,
@@ -240,6 +242,7 @@ export function createObjectConfig(sceneId, name = 'New Object', type = 'prop') 
     },
     hotspot: { enabled: type !== 'scenery', label: name, actions: {}, shape: 'visual', bounds: { x: 0, y: 0, width: 1, height: 1 }, alphaThreshold: 8 },
     interactionPoint: { x: 210, y: 300, facingMode: 'auto', facing: 'right' },
+    speechAnchor: type === 'character' ? { x: 0.5, y: -0.04 } : null,
     character: type === 'character' ? { characterId: '', displayName: name, role: 'npc', walkSpeed: 180 } : null,
     exit: type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, availabilityRuleId: '', hiddenUntilAvailable: false, blockedMessage: 'You cannot go there yet.' } : null,
     notes: ''

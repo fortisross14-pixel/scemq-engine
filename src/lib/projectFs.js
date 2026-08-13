@@ -114,6 +114,8 @@ export async function loadProjectBundle(root, manifest) {
   const inventory = (await scanJsonDirectory(inventoryDir, '.item.json')).map(item => ({
     ...item,
     schemaVersion: '0.4',
+    folder: item.folder || '',
+    sourceSceneId: item.sourceSceneId || '',
     interactions: { ...Object.fromEntries(INVENTORY_VERBS.map((verb) => [verb, true])), ...(item.interactions || {}) },
     combinations: (item.combinations || []).map(combo => ({ ...combo, bidirectional: combo.bidirectional ?? true }))
   }));

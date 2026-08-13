@@ -3,9 +3,6 @@ export const MIN_SPEECH_MS = 1100;
 export const MAX_SPEECH_MS = 9000;
 export const DEFAULT_TEXT_COLOR = '#eee9dc';
 
-// LucasArts games hold a line roughly as long as it takes to read it, with a
-// floor so one-word barks do not flicker and a ceiling so a long speech never
-// locks a cutscene forever.
 export function speechDurationMs(text, settings = {}) {
   const perChar = Math.max(5, Number(settings.textSpeed ?? DEFAULT_TEXT_SPEED));
   const length = String(text || '').trim().length;
@@ -21,13 +18,36 @@ export function createSpeechBubble({ id, text, speakerId = '', color = DEFAULT_T
   return { id, text: String(text ?? ''), speakerId, color, durationMs, anchor, createdAt: Date.now() };
 }
 
-// Speech is anchored above the speaker's head in world space. When there is no
-// speaker (narration, a "say" with no character), the caller centres it.
-export function speechAnchorForActor(point, transform = {}, scale = 1) {
+// A speech point is stored on the scene character object as relative coordinates
+// inside the actor rectangle. x=.5 is centered; y=0 is the top of the sprite;
+// negative y values place the point above the sprite. This keeps the point attached
+// to moving/scaling actors while still letting the director drag it visually.
+export function speechAnchorForActor(point, transform = {}, scale = 1, speechAnchor = null) {
+  const width = Number(transform.width || 0) * (Number(scale) || 1);
   const height = Number(transform.height || 0) * (Number(scale) || 1);
-  const anchorY = transform.anchorY ?? 1;
+  const anchorX = Number(transform.anchorX ?? 0.5);
+  const anchorY = Number(transform.anchorY ?? 1);
+  const left = Number(point?.x || 0) - width * anchorX;
+  const top = Number(point?.y || 0) - height * anchorY;
+  const bubbleX = Number.isFinite(Number(speechAnchor?.x)) ? Number(speechAnchor.x) : 0.5;
+  const bubbleY = Number.isFinite(Number(speechAnchor?.y)) ? Number(speechAnchor.y) : -0.04;
   return {
-    x: Number(point?.x || 0) + Number(transform.width || 0) * (Number(scale) || 1) * (0.5 - (transform.anchorX ?? 0.5)),
-    y: Number(point?.y || 0) - height * anchorY - 12
+    x: left + width * bubbleX,
+    y: top + height * bubbleY
+  };
+}
+
+export function speechScreenPosition(worldPoint, camera, zoom, viewport, margin = 18) {
+  const width = Number(viewport?.width || 0);
+  const height = Number(viewport?.height || 0);
+  const scale = Math.max(0.01, Number(zoom || 1));
+  const rawX = (Number(worldPoint?.x || 0) - Number(camera?.x || 0)) * scale;
+  const rawY = (Number(worldPoint?.y || 0) - Number(camera?.y || 0)) * scale;
+  // Leave enough horizontal room for the fixed-width bubble and enough top room
+  // that translateY(-100%) cannot push the text offscreen.
+  const side = Math.min(Math.max(70, width * 0.16), 210);
+  return {
+    x: Math.max(side, Math.min(Math.max(side, width - side), rawX)),
+    y: Math.max(110, Math.min(Math.max(110, height - margin), rawY))
   };
 }

@@ -24,3 +24,11 @@ test('alpha hit rejects transparent pixels', () => {
   assert.equal(alphaHit(mask, .1, .1, 8), false);
   assert.equal(alphaHit(mask, .75, .75, 8), true);
 });
+
+test('hotspot-only objects and image-less exits stay invisible at runtime', async () => {
+  const { runtimeObjectHasVisual } = await import('./hotspot.js');
+  assert.equal(runtimeObjectHasVisual({ type: 'hotspot' }, 'anything.png'), false);
+  assert.equal(runtimeObjectHasVisual({ type: 'exit' }, ''), false);
+  assert.equal(runtimeObjectHasVisual({ type: 'exit' }, 'door.png'), true);
+  assert.equal(runtimeObjectHasVisual({ type: 'prop' }, ''), true);
+});

@@ -55,3 +55,10 @@ export function alphaHit(mask, normalizedX, normalizedY, threshold = 8) {
 }
 
 function clamp01(value) { return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)); }
+
+export function runtimeObjectHasVisual(object, assetUrl = '') {
+  if (!object) return false;
+  if (object.type === 'hotspot') return false;
+  if (object.type === 'exit' && !assetUrl) return false;
+  return true;
+}

@@ -3,8 +3,8 @@ import { clampCamera, clampPointToWalkAreas, depthZAtPoint, findPathInWalkAreas,
 import { actorScaleAtPoint, scaledRenderBox } from '../lib/scale.js';
 import { findInventoryRecipe, inventoryEventTypeForVerb, inventoryRuleMatches, inventoryVerbEnabled } from '../lib/inventory.js';
 import { resolveDialogueStartNode } from '../lib/dialogue.js';
-import { alphaHit, hotspotRect } from '../lib/hotspot.js';
-import { speechAnchorForActor, speechColorFor, speechDurationMs } from '../lib/speech.js';
+import { alphaHit, hotspotRect, runtimeObjectHasVisual } from '../lib/hotspot.js';
+import { speechAnchorForActor, speechColorFor, speechDurationMs, speechScreenPosition } from '../lib/speech.js';
 import { fallbackResponse } from '../lib/responses.js';
 import { authoredRulesForInteraction, eventTypeForVerb, ruleEventMatches } from '../lib/interaction.js';
 import { delay, parseDurationMs, parsePoint } from '../lib/cutscene.js';
@@ -68,6 +68,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const [actorFacing, setActorFacing] = useState({});
   const [movingActors, setMovingActors] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
+  const pendingActionRef = useRef(null);
   const [animationOverrides, setAnimationOverrides] = useState({});
   const [savePanel, setSavePanel] = useState('');
   const [interactionWarning, setInteractionWarning] = useState('');
@@ -95,6 +96,8 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   useEffect(()=>{cameraRef.current=camera},[camera]);
   useEffect(()=>{cameraLockedRef.current=cameraLocked},[cameraLocked]);
   useEffect(()=>{inputEnabledRef.current=inputEnabled},[inputEnabled]);
+  function rememberPendingAction(action){pendingActionRef.current=action;setPendingAction(action)}
+  function clearPendingAction(){pendingActionRef.current=null;setPendingAction(null)}
 
   if(!audioRef.current) audioRef.current=new AudioEngine();
   useEffect(()=>{audioRef.current.setVolumes(settings)},[settings.musicVolume,settings.ambientVolume,settings.sfxVolume,settings.masterVolume]);
@@ -133,14 +136,15 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     interactionWarningTimerRef.current=setTimeout(()=>setInteractionWarning(''),3600);
   }
   function performPendingInteraction(action){
-    if(!action?.object)return;
-    const mode=action.object?.interactionPoint?.facingMode||'auto';
-    const explicit=action.object?.interactionPoint?.facing;
+    const obj=objectById(action?.objectId) || action?.object;
+    if(!obj)return;
+    const mode=obj?.interactionPoint?.facingMode||'auto';
+    const explicit=obj?.interactionPoint?.facing;
     const actor=actorPositionsRef.current[playerId]||{x:0,y:0};
-    const targetX=interactionTargetX(action.object);
+    const targetX=interactionTargetX(obj);
     const nextFacing=mode==='manual'&&['left','right'].includes(explicit)?explicit:horizontalFacingToward(actor.x,targetX,actorFacing[playerId]||'right');
     setActorFacing(f=>({...f,[playerId]:nextFacing}));
-    setTimeout(()=>performInteraction(action.object,action.verb),0);
+    setTimeout(()=>performInteraction(obj,action.verb,action.itemId||''),0);
   }
 
   function resolveCharacterRender(obj,isPlayer=false){
@@ -229,7 +233,8 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         const resolve=npcMoveResolversRef.current.get(objectId);
         if(resolve){npcMoveResolversRef.current.delete(objectId);resolve(true)}
         if(objectId===playerId){
-          const action=pendingAction;setPendingAction(null);
+          const action=pendingActionRef.current;
+          clearPendingAction();
           if(action)performPendingInteraction(action);
         }
       }
@@ -237,7 +242,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     }
     rafRef.current=requestAnimationFrame(frame);
     return ()=>cancelAnimationFrame(rafRef.current);
-  },[movingActors,bundle,paused,pendingAction,playerId]);
+  },[movingActors,bundle,paused,playerId]);
 
   function applyActorPosition(objectId,point,activeBundle=bundleRef.current,{clampToWalk=true}={}){
     if(!activeBundle)return point;
@@ -284,7 +289,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const centered=player?cameraForPoint(positions[player.id],loaded):null;
     const c=centered||clampCamera({x:loaded.visual.viewport.startX||0,y:loaded.visual.viewport.startY||0},loaded.visual.canvas,viewport,cameraBounds(loaded.visual.viewport,loaded.visual.canvas));
     setCamera(c);setCameraLocked(loaded.visual.viewport.followPlayer===false);
-    setMovingActors({}); setPendingAction(null); setDialogue(null); setHoverText(''); setPickupQueue([]); setSpeech([]);
+    setMovingActors({}); clearPendingAction(); setDialogue(null); setHoverText(''); setPickupQueue([]); setSpeech([]);
     audioRef.current.play('music',loaded.assetUrls.__music||'');
     audioRef.current.play('ambient',loaded.assetUrls.__ambient||'');
     if(autosave&&settings.autosaveOnSceneChange!==false&&loaded.meta?.sceneType!=='title')setTimeout(()=>writeSaveSlot(AUTOSAVE_SLOT,{silent:true}),0);
@@ -439,10 +444,11 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     });
   }
 
-  async function executeRule(ruleId, activeBundle=bundleRef.current){
+  async function executeRule(ruleId, activeBundle=bundleRef.current, context={}){
     const rule=findRule(ruleId,activeBundle);
     if(!rule)return {executed:false,reason:'missing'};
-    if(rule.event?.itemId&&rule.event.itemId!==selectedItem)return {executed:false,reason:'item'};
+    const eventItem=context.itemId??selectedItem;
+    if(rule.event?.itemId&&rule.event.itemId!==eventItem)return {executed:false,reason:'item'};
     if(!rulePass(rule,activeBundle))return {executed:false,reason:'conditions'};
     await runActions(rule.actions,activeBundle,{ruleId:rule.id,sayIndex:0});
     return {executed:true,reason:''};
@@ -494,27 +500,27 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       const reach=Math.max(24,Number(settings.interactionReachDistance)||110);
       const approach=resolveInteractionApproach(safeStart,point,bundle.visual.walkAreas||[],reach);
       if(!approach.reachable){
-        setPendingAction(null);
+        clearPendingAction();
         setMovingActors(c=>{const n={...c};delete n[playerId];return n});
         showInteractionWarning(action.object);
         return false;
       }
       clearInteractionWarning();
       if(approach.immediate){
-        setPendingAction(null);
+        clearPendingAction();
         setMovingActors(c=>{const n={...c};delete n[playerId];return n});
         performPendingInteraction(action);
         return true;
       }
-      setPendingAction(action);
+      rememberPendingAction({...action,objectId:action.object?.id||action.objectId||'',itemId:action.itemId??selectedItem});
       moveActorAlongPath(playerId,approach.path,walkSpeed);
       return true;
     }
 
     const path=findPathInWalkAreas(safeStart,point,bundle.visual.walkAreas||[]);
-    if(!path.length){setPendingAction(null);setMovingActors(c=>{const n={...c};delete n[playerId];return n});sayLine(fallbackResponse(settings,'walk','there'),playerDefinition?.id||'',{await:false});return false}
+    if(!path.length){clearPendingAction();setMovingActors(c=>{const n={...c};delete n[playerId];return n});sayLine(fallbackResponse(settings,'walk','there'),playerDefinition?.id||'',{await:false});return false}
     clearInteractionWarning();
-    setPendingAction(null);
+    clearPendingAction();
     moveActorAlongPath(playerId,path,walkSpeed);
     return true;
   }
@@ -528,14 +534,14 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const verb=overrideVerb||selectedVerb;
     const point=obj.interactionPoint||{x:obj.transform.x+obj.transform.width/2,y:obj.transform.y+obj.transform.height};
     if(verb==='walk'&&obj.type!=='exit'){walkTo(point);return}
-    walkTo(point,{object:obj,verb});
+    walkTo(point,{object:obj,objectId:obj.id,verb,itemId:selectedItem});
   }
   function contextObject(e,obj){
     e.preventDefault();
     if(settings.rightClickVerb==='none')return;
     clickObject(e,obj,settings.rightClickVerb||'look');
   }
-  async function performInteraction(obj,verb){
+  async function performInteraction(obj,verb,itemIdOverride=''){
     if(obj.type!=='exit')await playVerbAnimation(verb);
     if(obj.type==='exit'&&verb==='walk'&&obj.exit?.destinationSceneId){
       if(!exitAvailable(obj)){sayLine(obj.exit?.blockedMessage||'You cannot go there yet.',playerDefinition?.id||'',{await:false});return}
@@ -551,7 +557,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const binding=obj.hotspot?.actions?.[verb];
     let explicitHandled=false;
     if(binding?.ruleId){
-      const result=await executeRule(binding.ruleId);
+      const result=await executeRule(binding.ruleId,bundleRef.current,{itemId:itemIdOverride||selectedItem});
       if(result.executed)explicitHandled=true;
       else if(result.reason==='missing')showInteractionWarning(obj,`Hotspot rule “${binding.ruleId}” is missing for ${objectLabel(obj)}.`);
       else if(result.reason==='item')sayLine(fallbackResponse(settings,verb,objectLabel(obj)),playerDefinition?.id||'',{await:false});
@@ -563,13 +569,13 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       // declare event.targetId + verb; hotspot.actions is optional and acts as an override.
       const eventType=eventTypeForVerb(verb);
       const authored=authoredRulesForInteraction(bundleRef.current?.logic?.rules||[],{targetId:obj.id,targetType:'object',verb});
-      const handled=eventType?await runEvent(eventType,obj.id,bundleRef.current,'object',{verb,itemId:selectedItem}):0;
+      const handled=eventType?await runEvent(eventType,obj.id,bundleRef.current,'object',{verb,itemId:itemIdOverride||selectedItem}):0;
       if(!handled&&verb==='talk'&&obj.type==='character'&&obj.character?.characterId&&bundleRef.current?.dialogues?.some(d=>d.characterId===obj.character.characterId)){startDialogue(obj.character.characterId,bundleRef.current);return}
       if(!handled){
         // If authored rules exist but none currently match their conditions/item requirement,
         // this is a normal puzzle-state miss, not a broken binding. Keep the game response
         // friendly while exposing useful diagnostics in dev/editor consoles.
-        if(authored.length)console.info('[SCEMQ] Auto-bound rules found but none passed for interaction',{objectId:obj.id,verb,itemId:selectedItem,ruleIds:authored.map(r=>r.id)});
+        if(authored.length)console.info('[SCEMQ] Auto-bound rules found but none passed for interaction',{objectId:obj.id,verb,itemId:itemIdOverride||selectedItem,ruleIds:authored.map(r=>r.id)});
         sayLine(fallbackResponse(settings,verb,objectLabel(obj)),playerDefinition?.id||'',{await:false});
       }
     }
@@ -666,11 +672,19 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const viewportObjects=bundle.objects.filter(o=>o.id!==playerObject?.id&&objectVisible(o)).sort((a,b)=>a.transform.z-b.transform.z);
   const dNode=dialogue?.data.nodes.find(n=>n.id===dialogue.nodeId); const dBeat=dNode?.beats?.[dialogue?.beatIndex||0]; const dSpeaker=dBeat?projectData.characters.find(c=>c.id===dBeat.speakerId):null;
 
-  function speechAnchorFor(bubble){
-    const obj=bubble.speakerId?characterObjectForId(bubble.speakerId):null;
-    if(!obj)return {x:camera.x+worldViewportForZoom(ui.viewport,runtimeZoom).width/2,y:camera.y+60};
+  function speechWorldAnchorFor(speakerId=''){
+    const obj=speakerId?characterObjectForId(speakerId):null;
+    if(!obj)return {x:camera.x+worldViewportForZoom(ui.viewport,runtimeZoom).width/2,y:camera.y+80/runtimeZoom};
     const point=actorPosition(obj.id,obj);
-    return speechAnchorForActor(point,obj.transform,scaleForPoint(point));
+    return speechAnchorForActor(point,obj.transform,scaleForPoint(point),obj.speechAnchor);
+  }
+  function speechScreenAnchorFor(speakerId=''){
+    return speechScreenPosition(speechWorldAnchorFor(speakerId),camera,runtimeZoom,ui.viewport);
+  }
+  function advanceDialogueBeat(){
+    if(!dNode||!dBeat)return;
+    const index=dialogue?.beatIndex||0;
+    if(index<(dNode.beats?.length||1)-1)setDialogue(d=>({...d,beatIndex:index+1}));
   }
 
   return <div className="runtime-overlay" style={{background:settings.runtimeBackground||'#08090b'}}><div className="runtime-topbar"><strong>PLAY MODE</strong><span>{sceneRef.name}</span><button onClick={onClose}>Exit play</button></div><div className="runtime-fit"><div className="runtime-screen" style={{width:ui.screen.width,height:ui.screen.height,background:ui.screen.backgroundColor}}>
@@ -687,12 +701,14 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
           const renderWidth=isActor?box.width:t.width,renderHeight=isActor?box.height:t.height;
           const zIndex=isActor?depthZAtPoint(actorPoint,bundle.visual.depthAreas||[],t.z):t.z;
           return <React.Fragment key={obj.id}>
-            <div className="runtime-object runtime-visual-object" style={{left:renderLeft,top:renderTop,width:renderWidth,height:renderHeight,zIndex,opacity:t.opacity,transform:!anim&&obj.type==='character'&&staticCharacterFlip(obj)?'scaleX(-1)':(!anim&&t.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(obj.character?.characterId,anim.playKey)}/>:url?<img src={url} alt="" draggable="false" onLoad={e=>obj.hotspot?.shape==='alpha'&&cacheAlphaMask(url,e.currentTarget)}/>:<div className="runtime-placeholder">{obj.name}</div>}</div>
+            {runtimeObjectHasVisual(obj,url)&&<div className="runtime-object runtime-visual-object" style={{left:renderLeft,top:renderTop,width:renderWidth,height:renderHeight,zIndex,opacity:t.opacity,transform:!anim&&obj.type==='character'&&staticCharacterFlip(obj)?'scaleX(-1)':(!anim&&t.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(obj.character?.characterId,anim.playKey)}/>:url?<img src={url} alt="" draggable="false" onLoad={e=>obj.hotspot?.shape==='alpha'&&cacheAlphaMask(url,e.currentTarget)}/>:<div className="runtime-placeholder">{obj.name}</div>}</div>}
             {obj.hotspot?.enabled&&<div className={`runtime-hotspot-target clickable shape-${obj.hotspot?.shape||'visual'} ${runtime.showHotspots?'debug':''}`} style={{left:isActor?renderLeft:hr.x,top:isActor?renderTop:hr.y,width:isActor?renderWidth:hr.width,height:isActor?renderHeight:hr.height,zIndex}} onMouseMove={e=>{const hit=alphaHotspotHit(e,obj,url);e.currentTarget.style.cursor=hit?'pointer':'default';setHoverText(hit?interactionLabel(obj,selectedVerb):'')}} onMouseLeave={()=>setHoverText('')} onContextMenu={e=>contextObject(e,obj)} onClick={e=>{if(alphaHotspotHit(e,obj,url))clickObject(e,obj)}}>{runtime.showHotspots?<span>{objectLabel(obj)}</span>:null}</div>}
           </React.Fragment>})}
         {playerObject&&(()=>{const anim=resolveCharacterRender(playerObject,true);const box=anim?scaledRenderBox(playerPos,playerT,playerScale):playerBox;const staticUrl=staticCharacterAsset(playerObject,true);return <div className="runtime-object runtime-player" style={{left:box.left,top:box.top,width:box.width,height:box.height,zIndex:playerZ,opacity:playerT.opacity,transform:!anim&&staticCharacterFlip(playerObject)?'scaleX(-1)':(!anim&&playerT.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(playerDefinition?.id,anim.playKey)}/>:staticUrl?<img src={staticUrl} alt="" draggable="false"/>:<div className="runtime-placeholder">{playerObject.name}</div>}</div>})()}
-        {settings.floatingSpeech!==false&&speech.map(bubble=>{const anchor=speechAnchorFor(bubble);return <div key={bubble.id} className="runtime-speech" style={{left:anchor.x,top:anchor.y,color:bubble.color,zIndex:9000}} onClick={e=>{e.stopPropagation();dismissSpeech()}}>{bubble.text}</div>})}
       </div>
+      {settings.floatingSpeech!==false&&speech.map(bubble=>{const anchor=speechScreenAnchorFor(bubble.speakerId);return <div key={bubble.id} className="runtime-speech runtime-speech-screen" style={{left:anchor.x,top:anchor.y,color:bubble.color,zIndex:9000}} onClick={e=>{e.stopPropagation();dismissSpeech()}}>{bubble.text}</div>})}
+      {settings.floatingSpeech!==false&&dNode&&dBeat&&(()=>{const anchor=speechScreenAnchorFor(dBeat.speakerId);const text=translate(stringKey.dialogueBeat(sceneRef.id,dialogue.data.characterId,dNode.id,dBeat.id),dBeat.text);return <div className="runtime-speech runtime-dialogue-speech runtime-speech-screen" style={{left:anchor.x,top:anchor.y,color:speechColorFor(dSpeaker,settings),zIndex:9001}} onClick={e=>{e.stopPropagation();advanceDialogueBeat()}}>{text}</div>})()}
+      {settings.floatingSpeech!==false&&dNode&&dBeat&&(dialogue.beatIndex||0)>=(dNode.beats?.length||1)-1&&<div className="runtime-dialogue runtime-dialogue-choice-only runtime-dialogue-choice-in-viewport"><div className="runtime-dialogue-choices">{(dNode.choices||[]).filter(choiceVisible).map(c=><button key={c.id} onClick={()=>chooseDialogueChoice(c)}>{translate(stringKey.dialogueChoice(sceneRef.id,dialogue.data.characterId,dNode.id,c.id),c.text)}</button>)}{!(dNode.choices||[]).filter(choiceVisible).length&&<button onClick={()=>setDialogue(null)}>Continue</button>}</div></div>}
       {fade>0&&<div className="runtime-fade" style={{opacity:fade}}/>}
     </div>
     {(ui.elements||[]).sort((a,b)=>a.transform.z-b.transform.z).map(el=>{const t=el.transform;const active=el.action?.type==='selectVerb'&&el.action.value===selectedVerb;return <div key={el.id} className={`runtime-ui-element runtime-ui-${el.type} ${active?'active':''} ${inputEnabled?'':'dimmed'}`} style={{left:t.x,top:t.y,width:t.width,height:t.height,zIndex:t.z,background:el.style?.background,color:el.style?.color,fontSize:el.style?.fontSize}} onClick={()=>uiAction(el)}>
@@ -702,7 +718,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       {!['statusText','inventory','image','panel'].includes(el.type)?<span>{el.label||el.name}</span>:null}
     </div>})}
     {pickupQueue.length>0&&<div className="runtime-pickup-backdrop" onClick={()=>setPickupQueue(q=>q.slice(1))}><div className="runtime-pickup-card" onClick={e=>{e.stopPropagation();setPickupQueue(q=>q.slice(1))}}><strong>{pickupQueue[0].text}</strong><span>Click to continue</span></div></div>}
-    {dNode&&dBeat&&<div className="runtime-dialogue">{projectData.assetUrls.characters?.[`${dBeat.speakerId}:portrait`]&&<img className="runtime-dialogue-portrait" src={projectData.assetUrls.characters[`${dBeat.speakerId}:portrait`]} alt=""/>}<div className="runtime-dialogue-speaker">{dSpeaker?.name||dBeat.speakerId}</div><div className="runtime-dialogue-line" style={{color:speechColorFor(dSpeaker,settings)}}>{translate(stringKey.dialogueBeat(sceneRef.id,dialogue.data.characterId,dNode.id,dBeat.id),dBeat.text)}</div><div className="runtime-dialogue-choices">{(dialogue.beatIndex||0)<(dNode.beats?.length||1)-1?<button onClick={()=>setDialogue(d=>({...d,beatIndex:(d.beatIndex||0)+1}))}>Continue</button>:<>{(dNode.choices||[]).filter(choiceVisible).map(c=><button key={c.id} onClick={()=>chooseDialogueChoice(c)}>{translate(stringKey.dialogueChoice(sceneRef.id,dialogue.data.characterId,dNode.id,c.id),c.text)}</button>)}{!(dNode.choices||[]).filter(choiceVisible).length&&<button onClick={()=>setDialogue(null)}>Continue</button>}</>}</div></div>}
+    {settings.floatingSpeech===false&&dNode&&dBeat&&<div className="runtime-dialogue">{projectData.assetUrls.characters?.[`${dBeat.speakerId}:portrait`]&&<img className="runtime-dialogue-portrait" src={projectData.assetUrls.characters[`${dBeat.speakerId}:portrait`]} alt=""/>}<div className="runtime-dialogue-speaker">{dSpeaker?.name||dBeat.speakerId}</div><div className="runtime-dialogue-line" style={{color:speechColorFor(dSpeaker,settings)}}>{translate(stringKey.dialogueBeat(sceneRef.id,dialogue.data.characterId,dNode.id,dBeat.id),dBeat.text)}</div><div className="runtime-dialogue-choices">{(dialogue.beatIndex||0)<(dNode.beats?.length||1)-1?<button onClick={()=>setDialogue(d=>({...d,beatIndex:(d.beatIndex||0)+1}))}>Continue</button>:<>{(dNode.choices||[]).filter(choiceVisible).map(c=><button key={c.id} onClick={()=>chooseDialogueChoice(c)}>{translate(stringKey.dialogueChoice(sceneRef.id,dialogue.data.characterId,dNode.id,c.id),c.text)}</button>)}{!(dNode.choices||[]).filter(choiceVisible).length&&<button onClick={()=>setDialogue(null)}>Continue</button>}</>}</div></div>}
     {interactionWarning&&<div className="runtime-interaction-warning">{interactionWarning}</div>}
     {savePanelNode}
   {paused&&<div className="runtime-paused">PAUSED</div>}</div></div></div>

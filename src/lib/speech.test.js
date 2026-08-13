@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_TEXT_COLOR, MAX_SPEECH_MS, MIN_SPEECH_MS, speechAnchorForActor, speechColorFor, speechDurationMs } from './speech.js';
+import { DEFAULT_TEXT_COLOR, MAX_SPEECH_MS, MIN_SPEECH_MS, speechAnchorForActor, speechColorFor, speechDurationMs, speechScreenPosition } from './speech.js';
 
 test('a line is held roughly as long as it takes to read', () => {
   const short = speechDurationMs('Hi.');
@@ -20,10 +20,18 @@ test('a character colour wins over the project default', () => {
   assert.equal(speechColorFor(null, {}), DEFAULT_TEXT_COLOR);
 });
 
-test('speech sits above the head and follows the actor scale', () => {
-  const full = speechAnchorForActor({ x: 100, y: 300 }, { width: 80, height: 160, anchorX: 0.5, anchorY: 1 }, 1);
-  const half = speechAnchorForActor({ x: 100, y: 300 }, { width: 80, height: 160, anchorX: 0.5, anchorY: 1 }, 0.5);
-  assert.equal(full.x, 100);
-  assert.ok(full.y < 300);
-  assert.ok(half.y > full.y, 'a smaller actor has a lower head');
+test('speech point follows actor size and authored relative anchor', () => {
+  const defaultPoint = speechAnchorForActor({ x: 100, y: 300 }, { width: 80, height: 160, anchorX: 0.5, anchorY: 1 }, 1);
+  const rightPoint = speechAnchorForActor({ x: 100, y: 300 }, { width: 80, height: 160, anchorX: 0.5, anchorY: 1 }, 1, { x: 1, y: 0 });
+  assert.equal(defaultPoint.x, 100);
+  assert.ok(defaultPoint.y < 140, 'default speech point sits above the sprite');
+  assert.equal(rightPoint.x, 140);
+  assert.equal(rightPoint.y, 140);
+});
+
+test('speech is clamped inside the viewport so it cannot be cut off', () => {
+  const left = speechScreenPosition({ x: -100, y: -100 }, { x: 0, y: 0 }, 1, { width: 1280, height: 720 });
+  const right = speechScreenPosition({ x: 5000, y: 5000 }, { x: 0, y: 0 }, 1, { width: 1280, height: 720 });
+  assert.ok(left.x > 0 && left.y > 0);
+  assert.ok(right.x < 1280 && right.y < 720);
 });

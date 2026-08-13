@@ -102,3 +102,16 @@ test('walk polygon edges count as inside', async () => {
   assert.equal(pointInPolygon({x:50,y:100}, polygon), true);
   assert.equal(pointInPolygon({x:0,y:30}, polygon), true);
 });
+
+test('inventory items support authoring folders and source scene grouping', () => {
+  const item = createInventoryItem('Harbor Slip');
+  assert.equal(item.folder, '');
+  assert.equal(item.sourceSceneId, '');
+});
+
+test('character scene objects carry an editable speech point', () => {
+  const character = { ...createCharacterDefinition('Mara'), id: 'mara' };
+  const object = createCharacterObjectConfig('scene1', character);
+  assert.equal(object.speechAnchor.x, 0.5);
+  assert.ok(object.speechAnchor.y <= 0);
+});
