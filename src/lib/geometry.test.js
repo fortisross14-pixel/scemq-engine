@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas, followCameraForCharacter, worldViewportForZoom } from './geometry.js';
+import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas, followCameraForCharacter, resolveInteractionApproach, worldViewportForZoom } from './geometry.js';
 
 const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
 
@@ -98,4 +98,33 @@ test('interaction chooses reachable polygon instead of closer disconnected islan
   const path=findPathInWalkAreas({x:50,y:50},{x:205,y:50},areas);
   assert.ok(path.length>0);
   assert.equal(Math.round(path.at(-1).x),100);
+});
+
+
+test('interaction approach performs immediately when actor is already reasonably close',()=>{
+  const areas=[{enabled:true,points:[{x:0,y:0},{x:300,y:0},{x:300,y:300},{x:0,y:300}]}];
+  const approach=resolveInteractionApproach({x:100,y:150},{x:170,y:150},areas,90);
+  assert.equal(approach.reachable,true);
+  assert.equal(approach.immediate,true);
+  assert.deepEqual(approach.path,[]);
+});
+
+test('interaction approach walks to nearest legal point when authored marker is outside floor',()=>{
+  const areas=[{enabled:true,points:[{x:0,y:100},{x:300,y:100},{x:300,y:300},{x:0,y:300}]}];
+  const approach=resolveInteractionApproach({x:40,y:220},{x:220,y:40},areas,70);
+  assert.equal(approach.reachable,true);
+  assert.equal(approach.immediate,false);
+  assert.equal(Math.round(approach.point.x),220);
+  assert.equal(Math.round(approach.point.y),100);
+  assert.ok(approach.distanceToTarget<=70);
+});
+
+test('interaction approach reports unreachable when closest reachable floor is too far from target',()=>{
+  const areas=[
+    {enabled:true,points:[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}]},
+    {enabled:true,points:[{x:400,y:0},{x:500,y:0},{x:500,y:100},{x:400,y:100}]}
+  ];
+  const approach=resolveInteractionApproach({x:50,y:50},{x:450,y:50},areas,80);
+  assert.equal(approach.reachable,false);
+  assert.ok(approach.distanceToTarget>80);
 });

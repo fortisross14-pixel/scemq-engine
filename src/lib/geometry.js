@@ -190,6 +190,36 @@ export function findPathInWalkAreas(start, requestedTarget, areas = []) {
   return [];
 }
 
+export function resolveInteractionApproach(start, requestedTarget, areas = [], maxReachDistance = 110) {
+  const enabled = areas.filter((area) => area.enabled !== false && area.points?.length >= 3);
+  const safeStart = enabled.length ? nearestPointInPolygons(start, enabled) : { ...start };
+  const directDistance = Math.hypot(requestedTarget.x - safeStart.x, requestedTarget.y - safeStart.y);
+
+  // If the actor is already close enough, do not force a tiny walk just to
+  // satisfy an authored marker. This also prevents interaction points placed a
+  // few pixels behind counters/props from making an otherwise valid action fail.
+  if (directDistance <= maxReachDistance) {
+    return { reachable: true, immediate: true, point: { ...safeStart }, path: [], distanceToTarget: directDistance };
+  }
+
+  if (!enabled.length) {
+    return { reachable: true, immediate: false, point: { ...requestedTarget }, path: [{ ...requestedTarget }], distanceToTarget: 0 };
+  }
+
+  const path = findPathInWalkAreas(safeStart, requestedTarget, enabled);
+  if (!path.length) {
+    return { reachable: false, immediate: false, point: { ...safeStart }, path: [], distanceToTarget: directDistance };
+  }
+
+  const point = path.at(-1);
+  const distanceToTarget = Math.hypot(requestedTarget.x - point.x, requestedTarget.y - point.y);
+  if (distanceToTarget > maxReachDistance) {
+    return { reachable: false, immediate: false, point, path, distanceToTarget };
+  }
+
+  return { reachable: true, immediate: false, point, path, distanceToTarget };
+}
+
 // --- v0.6 camera pan easing (actor scaling lives in scale.js) ---------------
 // Camera pans need an eased position between two clamped camera points.
 export function easeInOutQuad(t) {
