@@ -119,11 +119,21 @@ export function segmentInsideWalkAreas(a, b, areas = []) {
   return true;
 }
 
-export function findPathInWalkAreas(start, requestedTarget, areas = []) {
-  const enabled = areas.filter((area) => area.enabled !== false && area.points?.length >= 3);
-  const target = nearestPointInPolygons(requestedTarget, enabled);
-  if (!enabled.length || segmentInsideWalkAreas(start, target, enabled)) return [target];
+function nearestPointInPolygon(point, polygon = []) {
+  if (polygon.length < 3) return { ...point };
+  if (pointInPolygon(point, polygon)) return { ...point };
+  let best = null;
+  let bestDist = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const candidate = nearestPointOnSegment(point, polygon[i], polygon[(i + 1) % polygon.length]);
+    const d = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
+    if (d < bestDist) { best = candidate; bestDist = d; }
+  }
+  return best || { ...point };
+}
 
+function pathToCandidate(start, target, enabled) {
+  if (segmentInsideWalkAreas(start, target, enabled)) return [target];
   const vertices = enabled.flatMap((area) => area.points.map((point) => ({ x: point.x, y: point.y })));
   const nodes = [start, target, ...vertices];
   const count = nodes.length;
@@ -136,7 +146,6 @@ export function findPathInWalkAreas(start, requestedTarget, areas = []) {
       graph[j].push([i, weight]);
     }
   }
-
   const dist = Array(count).fill(Infinity);
   const prev = Array(count).fill(-1);
   const visited = Array(count).fill(false);
@@ -157,6 +166,28 @@ export function findPathInWalkAreas(start, requestedTarget, areas = []) {
   for (let at = 1; at !== -1; at = prev[at]) indices.push(at);
   indices.reverse();
   return indices.slice(1).map((index) => nodes[index]);
+}
+
+// Route to the nearest point that is actually reachable from the actor's
+// current walk component. This is important for interactions: an authored
+// interaction marker may sit a few pixels outside the floor polygon, or a scene
+// may contain disconnected walk islands. The engine clamps the interaction to
+// reachable floor instead of silently cancelling Talk/Pick Up/Use.
+export function findPathInWalkAreas(start, requestedTarget, areas = []) {
+  const enabled = areas.filter((area) => area.enabled !== false && area.points?.length >= 3);
+  if (!enabled.length) return [{ ...requestedTarget }];
+
+  const safeStart = nearestPointInPolygons(start, enabled);
+  const candidates = enabled
+    .map((area) => nearestPointInPolygon(requestedTarget, area.points))
+    .sort((a, b) => ((a.x-requestedTarget.x)**2+(a.y-requestedTarget.y)**2) - ((b.x-requestedTarget.x)**2+(b.y-requestedTarget.y)**2));
+
+  for (const candidate of candidates) {
+    const path = pathToCandidate(safeStart, candidate, enabled);
+    if (path.length) return path;
+    if (Math.hypot(candidate.x-safeStart.x,candidate.y-safeStart.y) < 1) return [candidate];
+  }
+  return [];
 }
 
 // --- v0.6 camera pan easing (actor scaling lives in scale.js) ---------------

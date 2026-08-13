@@ -484,3 +484,5 @@ textarea { resize: vertical; }
 .strings-table td.source { color: var(--muted); line-height: 1.45; width: 34%; }
 .strings-table code.string-key { font-size: 11px; color: #8f96a2; word-break: break-all; }
 .strings-table tr.untranslated td.source { color: var(--text); }
+
+.character-ratio-probe{display:none!important}

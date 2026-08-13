@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { animationDurationMs, frameIndexAtTime, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from './animation.js';
+import { animationDurationMs, frameIndexAtTime, horizontalFacingFromDelta, horizontalFacingToward, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from './animation.js';
 
 test('frame animation timing loops and clamps',()=>{
  const a={frames:4,fps:10,loop:true};
@@ -29,4 +29,28 @@ test('animation resolver falls back to idle and supports mirroring',()=>{
 test('action animation mapping can be overridden',()=>{
  const c=normalizeCharacterAnimationData({actionAnimations:{pickUp:'crouch'}});
  assert.equal(requestedAnimationForVerb(c,'pickUp'),'crouch');
+});
+
+test('vertical movement preserves horizontal facing',()=>{
+  assert.equal(horizontalFacingFromDelta(0,'left'),'left');
+  assert.equal(horizontalFacingFromDelta(0,'right'),'right');
+});
+
+test('target X chooses left or right for every action',()=>{
+  assert.equal(horizontalFacingToward(100,20,'right'),'left');
+  assert.equal(horizontalFacingToward(100,180,'left'),'right');
+});
+
+test('generic action strip mirrors for left-facing actor',()=>{
+  const c={animations:{pickup:{src:'pickup.png',frames:6,allowHorizontalFlip:true}},defaultAnimation:'pickup'};
+  const resolved=resolveAnimation(c,'pickup','left');
+  assert.equal(resolved.name,'pickup');
+  assert.equal(shouldMirror(resolved.animation,'left',resolved.name),true);
+});
+
+test('walk-right alias can be reused and mirrored to walk left',()=>{
+  const c={animations:{'walk-right':{src:'walk.png',frames:6,allowHorizontalFlip:true}},defaultAnimation:''};
+  const resolved=resolveAnimation(c,'walk','left');
+  assert.equal(resolved.name,'walk-right');
+  assert.equal(shouldMirror(resolved.animation,'left',resolved.name),true);
 });

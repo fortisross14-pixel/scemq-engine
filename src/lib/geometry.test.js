@@ -36,13 +36,15 @@ test('spawn point outside walk area clamps to nearest valid point', () => {
   assert.deepEqual(clampPointToWalkAreas({ x: 150, y: 40 }, [{ enabled: true, points: square }]), { x: 100, y: 40 });
 });
 
-test('path finder refuses to cross disconnected walk areas', () => {
+test('path finder never crosses disconnected walk areas and stops at reachable edge', () => {
   const right = square.map((p) => ({ x: p.x + 200, y: p.y }));
   const path = findPathInWalkAreas({ x: 20, y: 20 }, { x: 240, y: 20 }, [
     { enabled: true, points: square },
     { enabled: true, points: right }
   ]);
-  assert.deepEqual(path, []);
+  assert.ok(path.length > 0);
+  assert.equal(Math.round(path.at(-1).x), 100);
+  assert.equal(Math.round(path.at(-1).y), 20);
 });
 
 test('follow camera centers visible character rather than feet', () => {
@@ -77,4 +79,23 @@ test('zoomed follow camera centers using world-space viewport dimensions', () =>
   const camera = followCameraForCharacter({ x: 1200, y: 900 }, transform, canvas, view);
   // visible character center = (1200, 750), world view = 1600x900
   assert.deepEqual(camera, { x: 400, y: 300 });
+});
+
+test('interaction target outside the walk polygon clamps to reachable floor',()=>{
+  const areas=[{enabled:true,points:[{x:0,y:100},{x:300,y:100},{x:300,y:300},{x:0,y:300}]}];
+  const path=findPathInWalkAreas({x:50,y:200},{x:200,y:20},areas);
+  assert.ok(path.length>0);
+  const end=path.at(-1);
+  assert.equal(Math.round(end.y),100);
+  assert.equal(Math.round(end.x),200);
+});
+
+test('interaction chooses reachable polygon instead of closer disconnected island',()=>{
+  const areas=[
+    {enabled:true,points:[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}]},
+    {enabled:true,points:[{x:200,y:0},{x:300,y:0},{x:300,y:100},{x:200,y:100}]}
+  ];
+  const path=findPathInWalkAreas({x:50,y:50},{x:205,y:50},areas);
+  assert.ok(path.length>0);
+  assert.equal(Math.round(path.at(-1).x),100);
 });

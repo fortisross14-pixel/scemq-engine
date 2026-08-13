@@ -236,8 +236,8 @@ function migrateVisual(visual) {
 function migrateObject(object) {
   const base = {
     asset: { path: '', state: 'default', states: { default: '' } },
-    transform: { flipX: false, locked: false, lockAspect: true, anchor: object.type === 'character' ? 'bottom-center' : 'top-left', anchorX: 0.5, anchorY: object.type === 'character' ? 1 : 0 },
-    interactionPoint: { x: (object.transform?.x || 0) + (object.transform?.width || 100) / 2, y: (object.transform?.y || 0) + (object.transform?.height || 100), facing: 'right' },
+    transform: { flipX: false, locked: false, lockAspect: true, aspectRatio: 0, anchor: object.type === 'character' ? 'bottom-center' : 'top-left', anchorX: 0.5, anchorY: object.type === 'character' ? 1 : 0 },
+    interactionPoint: { x: (object.transform?.x || 0) + (object.transform?.width || 100) / 2, y: (object.transform?.y || 0) + (object.transform?.height || 100), facingMode: 'auto', facing: 'right' },
     notes: ''
   };
   const asset = { ...base.asset, ...(object.asset || {}) };
@@ -249,7 +249,7 @@ function migrateObject(object) {
   const exit = object.type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, availabilityRuleId: '', hiddenUntilAvailable: false, blockedMessage: 'You cannot go there yet.', ...(object.exit || {}) } : null;
   const hotspot = { enabled: object.type !== 'scenery', label: object.name, actions: {}, shape: 'visual', bounds: { x: 0, y: 0, width: 1, height: 1 }, alphaThreshold: 8, ...(object.hotspot || {}) };
   hotspot.bounds = { x: 0, y: 0, width: 1, height: 1, ...(object.hotspot?.bounds || {}) };
-  return { ...object, schemaVersion: '0.4', asset, transform: { ...object.transform, ...base.transform, ...(object.transform || {}) }, hotspot, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
+  const transform = { ...object.transform, ...base.transform, ...(object.transform || {}) }; if (object.type === 'character') transform.lockAspect = true; return { ...object, schemaVersion: '0.4', asset, transform, hotspot, interactionPoint: { ...base.interactionPoint, ...(object.interactionPoint || {}) }, character, exit, notes: object.notes || '' };
 }
 
 export async function loadSceneBundle(root, sceneRef) {

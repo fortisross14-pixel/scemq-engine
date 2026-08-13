@@ -6,12 +6,13 @@ import { resolveDialogueStartNode } from '../lib/dialogue.js';
 import { alphaHit, hotspotRect } from '../lib/hotspot.js';
 import { speechAnchorForActor, speechColorFor, speechDurationMs } from '../lib/speech.js';
 import { fallbackResponse } from '../lib/responses.js';
+import { ruleEventMatches } from '../lib/interaction.js';
 import { delay, parseDurationMs, parsePoint } from '../lib/cutscene.js';
 import { AudioEngine } from '../lib/audio.js';
 import { AUTOSAVE_SLOT, createSaveRecord, formatPlaytime, listSaves, readSave, writeSave } from '../lib/saves.js';
 import { createTranslator, key as stringKey } from '../lib/localization.js';
 import SpriteStrip from './SpriteStrip.jsx';
-import { characterAnimationAssetKey, requestedAnimationForVerb, resolveAnimation, shouldMirror } from '../lib/animation.js';
+import { characterAnimationAssetKey, horizontalFacingFromDelta, horizontalFacingToward, requestedAnimationForVerb, resolveAnimation, shouldMirror } from '../lib/animation.js';
 
 const VERB_KEYS = { w: 'walk', l: 'look', u: 'use', t: 'talk', p: 'pickUp', g: 'give', o: 'open', c: 'close', s: 'push', y: 'pull' };
 
@@ -117,6 +118,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   function objectById(id,activeBundle=bundleRef.current){return activeBundle?.objects?.find(o=>o.id===id)||null}
   function characterObjectForId(characterId, activeBundle=bundleRef.current){return activeBundle?.objects?.find(o=>o.type==='character'&&o.character?.characterId===characterId)||null}
   function resolveActorObject(targetId, activeBundle=bundleRef.current){return objectById(targetId,activeBundle)||characterObjectForId(targetId,activeBundle)}
+  function interactionTargetX(obj){if(!obj)return 0;if(obj.type==='character')return actorPosition(obj.id,obj).x;return Number(obj.transform?.x||0)+Number(obj.transform?.width||0)/2}
   function currentDialogueBeat(){const d=dialogue;if(!d)return null;const node=d.data?.nodes?.find(n=>n.id===d.nodeId);return node?.beats?.[d.beatIndex||0]||null}
   function scaleForPoint(point,activeBundle=bundleRef.current){return actorScaleAtPoint(point,activeBundle?.visual?.scaleAreas||[],1)}
 
@@ -193,7 +195,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         for(const [objectId,move] of Object.entries(current)){
           const pos=actorPositionsRef.current[objectId]||move.target;
           const dx=move.target.x-pos.x,dy=move.target.y-pos.y;const dist=Math.hypot(dx,dy);const step=(move.speed||180)*dt;
-          setActorFacing(f=>{const nextFacing=Math.abs(dx)>Math.abs(dy)?(dx<0?'left':'right'):(Math.abs(dy)>1?(dy<0?'up':'down'):f[objectId]);return f[objectId]===nextFacing?f:{...f,[objectId]:nextFacing}});
+          setActorFacing(f=>{const nextFacing=horizontalFacingFromDelta(dx,f[objectId]||'right');return f[objectId]===nextFacing?f:{...f,[objectId]:nextFacing}});
           if(dist<=step||dist<2){
             applyActorPosition(objectId,{...move.target});
             if(move.queue?.length){next[objectId]={...move,target:move.queue[0],queue:move.queue.slice(1)}}
@@ -207,7 +209,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         if(resolve){npcMoveResolversRef.current.delete(objectId);resolve(true)}
         if(objectId===playerId){
           const action=pendingAction;setPendingAction(null);
-          if(action){if(action.object?.interactionPoint?.facing)setActorFacing(f=>({...f,[playerId]:action.object.interactionPoint.facing}));setTimeout(()=>performInteraction(action.object,action.verb),0)}
+          if(action){const mode=action.object?.interactionPoint?.facingMode||'auto';const explicit=action.object?.interactionPoint?.facing;const actor=actorPositionsRef.current[playerId]||{x:0,y:0};const targetX=interactionTargetX(action.object);const nextFacing=mode==='manual'&&['left','right'].includes(explicit)?explicit:horizontalFacingToward(actor.x,targetX,actorFacing[playerId]||'right');setActorFacing(f=>({...f,[playerId]:nextFacing}));setTimeout(()=>performInteraction(action.object,action.verb),0)}
         }
       }
       rafRef.current=requestAnimationFrame(frame);
@@ -248,12 +250,12 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const positions={};const facings={};
     for(const obj of loaded.objects.filter(o=>o.type==='character')){
       positions[obj.id]={x:obj.transform.x+obj.transform.width*(obj.transform.anchorX??.5),y:obj.transform.y+obj.transform.height*(obj.transform.anchorY??1)};
-      facings[obj.id]=projectData.characters.find(c=>c.id===obj.character?.characterId)?.defaultFacing||'right';
+      facings[obj.id]=projectData.characters.find(c=>c.id===obj.character?.characterId)?.defaultFacing==='left'?'left':'right';
     }
     if(player){
       const requested={x:spawn.x,y:spawn.y};
       positions[player.id]=loaded.meta?.sceneType==='title'?requested:clampPointToWalkAreas(requested,loaded.visual.walkAreas||[]);
-      facings[player.id]=spawn.facing||loaded.visual.player.facing||'right';
+      facings[player.id]=(spawn.facing||loaded.visual.player.facing)==='left'?'left':'right';
     }
     setActorPositions(positions);actorPositionsRef.current=positions;setActorFacing(facings);
 
@@ -350,9 +352,12 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
           const obj=resolveActorObject(key,activeBundle);const point=parsePoint(action.value);
           if(obj&&point){
             const from=actorPosition(obj.id,obj);
-            const path=findPathInWalkAreas(from,point,activeBundle.visual.walkAreas||[]);
+            const safeStart=clampPointToWalkAreas(from,activeBundle.visual.walkAreas||[]);
+            if(Math.hypot(safeStart.x-from.x,safeStart.y-from.y)>.5)applyActorPosition(obj.id,safeStart,activeBundle,{clampToWalk:false});
+            const path=findPathInWalkAreas(safeStart,point,activeBundle.visual.walkAreas||[]);
+            if(!path.length)break;
             const speed=obj.character?.walkSpeed||180;
-            const walk=moveActorAlongPath(obj.id,path.length?path:[point],speed);
+            const walk=moveActorAlongPath(obj.id,path,speed);
             if(action.waitForCompletion!==false)await walk;
           }
           break;
@@ -392,7 +397,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         }
         case 'moveCharacter':{
           const obj=resolveActorObject(key,activeBundle);const point=parsePoint(action.value);
-          if(obj&&point)applyActorPosition(obj.id,point,activeBundle,{clampToWalk:obj.id===playerId});
+          if(obj&&point)applyActorPosition(obj.id,point,activeBundle,{clampToWalk:obj.type==='character'});
           break;
         }
         default: break;
@@ -414,10 +419,12 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   }
 
   async function executeRule(ruleId, activeBundle=bundleRef.current){const rule=findRule(ruleId,activeBundle);if(rule&&(!rule.event?.itemId||rule.event.itemId===selectedItem)&&rulePass(rule,activeBundle))await runActions(rule.actions,activeBundle,{ruleId:rule.id,sayIndex:0})}
-  async function runEvent(type,targetId,activeBundle=bundleRef.current,targetType='object'){const interactionEvent=['onLook','onUse','onPickUp','onTalk','onGive','onOpen','onClose','onPush','onPull','onItemUsed'].includes(type);let handled=0;for(const rule of activeBundle?.logic.rules||[]){const eventTargetType=rule.event?.targetType||'object';const targetMatches=!rule.event.targetId||(rule.event.targetId===targetId&&eventTargetType===targetType);if(rule.event.type===type&&targetMatches&&(!interactionEvent||!rule.event.verb||rule.event.verb===selectedVerb)&&(!interactionEvent||targetType==='inventory'||!rule.event.itemId||rule.event.itemId===selectedItem)&&rulePass(rule,activeBundle)){handled+=1;await runActions(rule.actions,activeBundle,{ruleId:rule.id,sayIndex:0})}}return handled}
+  async function runEvent(type,targetId,activeBundle=bundleRef.current,targetType='object',context={}){const eventVerb=context.verb??selectedVerb;const eventItem=context.itemId??selectedItem;let handled=0;for(const rule of activeBundle?.logic.rules||[]){if(ruleEventMatches(rule,{type,targetId,targetType,verb:eventVerb,itemId:eventItem})&&rulePass(rule,activeBundle)){handled+=1;await runActions(rule.actions,activeBundle,{ruleId:rule.id,sayIndex:0})}}return handled}
 
   function startDialogue(characterId, activeBundle=bundleRef.current, startNodeId=''){
     const d=activeBundle?.dialogues.find(x=>x.characterId===characterId); if(!d){sayLine('No dialogue is authored for this character.',playerDefinition?.id||'',{await:false});return}
+    const npc=characterObjectForId(characterId,activeBundle);const playerPoint=actorPositionsRef.current[playerId];
+    if(npc&&npc.id!==playerId&&playerPoint){const npcPoint=actorPosition(npc.id,npc);setActorFacing(f=>({...f,[npc.id]:horizontalFacingToward(npcPoint.x,playerPoint.x,f[npc.id]||'right')}))}
     const nodeId=resolveDialogueStartNode(d,startNodeId);
     setDialogue({data:d,nodeId,beatIndex:0});
   }
@@ -437,10 +444,11 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     return bundle?.stateAssetUrls?.[`${obj.id}:${path}`] || bundle?.assetUrls?.[obj.id] || (obj.type==='character'&&projectData.assetUrls.characters?.[`${obj.character?.characterId}:idle`]) || '';
   }
   function staticCharacterAsset(obj,isPlayer){
-    const def=projectData.characters.find(c=>c.id===obj.character?.characterId);
-    if(def&&movingActors[obj.id]){const slot={left:'walkLeft',right:'walkRight',up:'walkUp',down:'walkDown'}[actorFacing[obj.id]||'right']||'walkRight';const animated=projectData.assetUrls.characters?.[`${def.id}:${slot}`];if(animated)return animated}
+    const def=projectData.characters.find(c=>c.id===obj.character?.characterId);const side=actorFacing[obj.id]==='left'?'left':'right';
+    if(def&&movingActors[obj.id]){const primary=side==='left'?'walkLeft':'walkRight',fallback=side==='left'?'walkRight':'walkLeft';return projectData.assetUrls.characters?.[`${def.id}:${primary}`]||projectData.assetUrls.characters?.[`${def.id}:${fallback}`]||activeObjectAsset(obj)||(def?projectData.assetUrls.characters?.[`${def.id}:idle`]:'')||''}
     return activeObjectAsset(obj)||(def?projectData.assetUrls.characters?.[`${def.id}:idle`]:'')||'';
   }
+  function staticCharacterFlip(obj){const def=projectData.characters.find(c=>c.id===obj.character?.characterId);const side=actorFacing[obj.id]==='left'?'left':'right';if(!def)return !!obj.transform?.flipX;if(movingActors[obj.id]){const hasLeft=!!projectData.assetUrls.characters?.[`${def.id}:walkLeft`],hasRight=!!projectData.assetUrls.characters?.[`${def.id}:walkRight`];if(side==='left')return !hasLeft&&hasRight;if(side==='right')return hasLeft&&!hasRight}return side==='left'}
   function objectVisible(obj){const base=runtime.objectVisibility[`${sceneRef.id}:${obj.id}`] ?? obj.transform.visible;if(!base)return false;if(obj.type==='exit'&&obj.exit?.hiddenUntilAvailable&&!exitAvailable(obj))return false;return true}
   function objectLabel(obj){return translate(stringKey.objectLabel(sceneRef.id,obj.id),obj.hotspot?.label||obj.name)}
   function interactionLabel(obj,verb){const item=selectedItem?projectData.inventory.find(i=>i.id===selectedItem)?.name:'';const target=objectLabel(obj);if(item&&verb==='use')return `Use ${item} with ${target}`;if(item&&verb==='give')return `Give ${item} to ${target}`;const v=verb==='pickUp'?'Pick up':verb[0].toUpperCase()+verb.slice(1);return `${v} ${target}`}
@@ -493,7 +501,8 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     if(binding?.dialogueId)startDialogue(binding.dialogueId);
     if(!binding?.ruleId&&!binding?.dialogueId){
       const eventType={look:'onLook',use:'onUse',talk:'onTalk',pickUp:'onPickUp',give:'onGive',open:'onOpen',close:'onClose',push:'onPush',pull:'onPull'}[verb];
-      const handled=eventType?await runEvent(eventType,obj.id):0;
+      const handled=eventType?await runEvent(eventType,obj.id,bundleRef.current,'object',{verb,itemId:selectedItem}):0;
+      if(!handled&&verb==='talk'&&obj.type==='character'&&obj.character?.characterId&&bundleRef.current?.dialogues?.some(d=>d.characterId===obj.character.characterId)){startDialogue(obj.character.characterId,bundleRef.current);return}
       if(!handled)sayLine(fallbackResponse(settings,verb,objectLabel(obj)),playerDefinition?.id||'',{await:false});
     }
   }
@@ -509,7 +518,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     await playVerbAnimation(verb);
     const eventType=inventoryEventTypeForVerb(verb);
     if(!eventType){sayLine(inventoryFallback(item,verb),playerDefinition?.id||'',{await:false});return}
-    const handled=await runEvent(eventType,itemId,bundleRef.current,'inventory');
+    const handled=await runEvent(eventType,itemId,bundleRef.current,'inventory',{verb,itemId:''});
     if(!handled)sayLine(inventoryFallback(item,verb),playerDefinition?.id||'',{await:false});
   }
 
@@ -605,15 +614,15 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
           const isActor=obj.type==='character';
           const actorPoint=isActor?actorPosition(obj.id,obj):null;
           const actorScale=isActor?scaleForPoint(actorPoint):1;
-          const box=isActor?scaledRenderBox(actorPoint,anim?{...t,anchorX:anim.animation.anchorX??t.anchorX,anchorY:anim.animation.anchorY??t.anchorY}:t,actorScale):null;
+          const box=isActor?scaledRenderBox(actorPoint,t,actorScale):null;
           const renderLeft=isActor?box.left:t.x,renderTop=isActor?box.top:t.y;
           const renderWidth=isActor?box.width:t.width,renderHeight=isActor?box.height:t.height;
           const zIndex=isActor?depthZAtPoint(actorPoint,bundle.visual.depthAreas||[],t.z):t.z;
           return <React.Fragment key={obj.id}>
-            <div className="runtime-object runtime-visual-object" style={{left:renderLeft,top:renderTop,width:renderWidth,height:renderHeight,zIndex,opacity:t.opacity,transform:!anim&&t.flipX?'scaleX(-1)':'none'}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(obj.character?.characterId,anim.playKey)}/>:url?<img src={url} alt="" draggable="false" onLoad={e=>obj.hotspot?.shape==='alpha'&&cacheAlphaMask(url,e.currentTarget)}/>:<div className="runtime-placeholder">{obj.name}</div>}</div>
+            <div className="runtime-object runtime-visual-object" style={{left:renderLeft,top:renderTop,width:renderWidth,height:renderHeight,zIndex,opacity:t.opacity,transform:!anim&&obj.type==='character'&&staticCharacterFlip(obj)?'scaleX(-1)':(!anim&&t.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(obj.character?.characterId,anim.playKey)}/>:url?<img src={url} alt="" draggable="false" onLoad={e=>obj.hotspot?.shape==='alpha'&&cacheAlphaMask(url,e.currentTarget)}/>:<div className="runtime-placeholder">{obj.name}</div>}</div>
             {obj.hotspot?.enabled&&<div className={`runtime-hotspot-target clickable shape-${obj.hotspot?.shape||'visual'} ${runtime.showHotspots?'debug':''}`} style={{left:isActor?renderLeft:hr.x,top:isActor?renderTop:hr.y,width:isActor?renderWidth:hr.width,height:isActor?renderHeight:hr.height,zIndex}} onMouseMove={e=>{const hit=alphaHotspotHit(e,obj,url);e.currentTarget.style.cursor=hit?'pointer':'default';setHoverText(hit?interactionLabel(obj,selectedVerb):'')}} onMouseLeave={()=>setHoverText('')} onContextMenu={e=>contextObject(e,obj)} onClick={e=>{if(alphaHotspotHit(e,obj,url))clickObject(e,obj)}}>{runtime.showHotspots?<span>{objectLabel(obj)}</span>:null}</div>}
           </React.Fragment>})}
-        {playerObject&&(()=>{const anim=resolveCharacterRender(playerObject,true);const box=anim?scaledRenderBox(playerPos,{...playerT,anchorX:anim.animation.anchorX??playerT.anchorX,anchorY:anim.animation.anchorY??playerT.anchorY},playerScale):playerBox;const staticUrl=staticCharacterAsset(playerObject,true);return <div className="runtime-object runtime-player" style={{left:box.left,top:box.top,width:box.width,height:box.height,zIndex:playerZ,opacity:playerT.opacity,transform:!anim&&playerT.flipX?'scaleX(-1)':'none'}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(playerDefinition?.id,anim.playKey)}/>:staticUrl?<img src={staticUrl} alt="" draggable="false"/>:<div className="runtime-placeholder">{playerObject.name}</div>}</div>})()}
+        {playerObject&&(()=>{const anim=resolveCharacterRender(playerObject,true);const box=anim?scaledRenderBox(playerPos,playerT,playerScale):playerBox;const staticUrl=staticCharacterAsset(playerObject,true);return <div className="runtime-object runtime-player" style={{left:box.left,top:box.top,width:box.width,height:box.height,zIndex:playerZ,opacity:playerT.opacity,transform:!anim&&staticCharacterFlip(playerObject)?'scaleX(-1)':(!anim&&playerT.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(playerDefinition?.id,anim.playKey)}/>:staticUrl?<img src={staticUrl} alt="" draggable="false"/>:<div className="runtime-placeholder">{playerObject.name}</div>}</div>})()}
         {settings.floatingSpeech!==false&&speech.map(bubble=>{const anchor=speechAnchorFor(bubble);return <div key={bubble.id} className="runtime-speech" style={{left:anchor.x,top:anchor.y,color:bubble.color,zIndex:9000}} onClick={e=>{e.stopPropagation();dismissSpeech()}}>{bubble.text}</div>})}
       </div>
       {fade>0&&<div className="runtime-fade" style={{opacity:fade}}/>}

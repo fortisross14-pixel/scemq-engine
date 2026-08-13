@@ -235,11 +235,11 @@ export function createObjectConfig(sceneId, name = 'New Object', type = 'prop') 
     asset: { path: '', state: 'default', states: { default: '' } },
     transform: {
       x: 120, y: 120, width: 180, height: 180, z: 20, opacity: 1, visible: true,
-      flipX: false, locked: false, lockAspect: true,
+      flipX: false, locked: false, lockAspect: true, aspectRatio: 0,
       anchor: type === 'character' ? 'bottom-center' : 'top-left', anchorX: 0.5, anchorY: type === 'character' ? 1 : 0
     },
     hotspot: { enabled: type !== 'scenery', label: name, actions: {}, shape: 'visual', bounds: { x: 0, y: 0, width: 1, height: 1 }, alphaThreshold: 8 },
-    interactionPoint: { x: 210, y: 300, facing: 'right' },
+    interactionPoint: { x: 210, y: 300, facingMode: 'auto', facing: 'right' },
     character: type === 'character' ? { characterId: '', displayName: name, role: 'npc', walkSpeed: 180 } : null,
     exit: type === 'exit' ? { destinationSceneId: '', spawnPointId: 'default', transition: 'fade', walkFirst: true, availabilityRuleId: '', hiddenUntilAvailable: false, blockedMessage: 'You cannot go there yet.' } : null,
     notes: ''
