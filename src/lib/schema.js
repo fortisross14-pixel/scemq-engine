@@ -1,17 +1,36 @@
 import { DEFAULT_ACTION_ANIMATIONS } from './animation.js';
+import { createDefaultResponses } from './responses.js';
+import { DEFAULT_TEXT_COLOR, DEFAULT_TEXT_SPEED } from './speech.js';
 import { slugify, uniqueId } from './id.js';
 
 export const SCHEMA_VERSION = '0.4';
 
 export const EVENT_TYPES = [
   'onLook', 'onUse', 'onPickUp', 'onTalk', 'onGive', 'onOpen', 'onClose', 'onPush', 'onPull',
-  'onEnterScene', 'onLeaveScene', 'onItemUsed', 'onInventoryCombine', 'onDialogueChoice', 'onVariableChanged'
+  'onEnterScene', 'onLeaveScene', 'onItemUsed', 'onInventoryCombine', 'onDialogueChoice', 'onVariableChanged',
+  'onTick'
 ];
 
 export const ACTION_TYPES = [
   'say', 'setFlag', 'setVariable', 'giveItem', 'removeItem',
   'setVisualState', 'showObject', 'hideObject', 'moveCharacter',
-  'changeScene', 'startDialogue', 'playAnimation'
+  'changeScene', 'startDialogue', 'playAnimation',
+  // v0.6 cutscene/sequencing vocabulary
+  'wait', 'moveCharacterTo', 'faceCharacter', 'cameraPanTo', 'cameraFollowPlayer',
+  'setInputEnabled', 'fadeOut', 'fadeIn', 'playSound', 'playMusic', 'stopMusic',
+  'switchPlayerCharacter', 'stopDialogue'
+];
+
+// Actions whose targetId is a scene object id (used by validation and editors).
+export const OBJECT_ACTION_TYPES = ['setVisualState', 'showObject', 'hideObject', 'moveCharacter'];
+
+// Actions that can block a sequence until they finish.
+export const AWAITABLE_ACTION_TYPES = ['say', 'wait', 'moveCharacterTo', 'cameraPanTo', 'playAnimation', 'fadeOut', 'fadeIn'];
+
+export const SEQUENCE_ACTION_TYPES = [
+  'wait', 'moveCharacterTo', 'faceCharacter', 'cameraPanTo', 'cameraFollowPlayer',
+  'setInputEnabled', 'fadeOut', 'fadeIn', 'playSound', 'playMusic', 'stopMusic',
+  'switchPlayerCharacter', 'stopDialogue'
 ];
 
 export const OBJECT_TYPES = ['scenery', 'prop', 'character', 'hotspot', 'exit'];
@@ -45,7 +64,21 @@ export function createProjectSettings(name = 'Untitled Project') {
     saveSlots: 3,
     defaultVerb: 'walk',
     showStatusLine: true,
-    runtimeBackground: '#08090b'
+    runtimeBackground: '#08090b',
+    // v0.6 runtime feel
+    textSpeed: DEFAULT_TEXT_SPEED,
+    textDefaultColor: DEFAULT_TEXT_COLOR,
+    floatingSpeech: true,
+    rightClickVerb: 'look',
+    keyboardShortcuts: true,
+    autosaveOnSceneChange: true,
+    sharedInventory: true,
+    masterVolume: 1,
+    musicVolume: 0.6,
+    ambientVolume: 0.5,
+    sfxVolume: 0.9,
+    language: '',
+    defaultResponses: createDefaultResponses()
   };
 }
 
@@ -108,6 +141,7 @@ export function createCharacterDefinition(name = 'New Character') {
     notes: '',
     assets: { portrait: '', idle: '', walkLeft: '', walkRight: '', walkUp: '', walkDown: '' },
     animations: {},
+    textColor: '',
     defaultAnimation: '',
     actionAnimations: { ...DEFAULT_ACTION_ANIMATIONS },
     idleVariants: []
@@ -126,6 +160,7 @@ export function createInventoryItem(name = 'New Item') {
     asset: '',
     cursorAsset: '',
     initiallyOwned: false,
+    critical: false,
     persistent: true,
     stackable: false,
     interactions: Object.fromEntries(INVENTORY_VERBS.map((verb) => [verb, true])),
@@ -163,6 +198,7 @@ export function createVisualConfig(sceneId) {
     },
     viewport: {
       followPlayer: true,
+      zoom: 1,
       startX: 0,
       startY: 0,
       limits: { left: 0, top: 0, right: 1600, bottom: 900 }
@@ -172,6 +208,7 @@ export function createVisualConfig(sceneId) {
     spawnPoints: [{ id: 'default', name: 'Default', x: 220, y: 700, facing: 'right' }],
     walkAreas: [],
     depthAreas: [],
+    scaleAreas: [],
     objectRefs: []
   };
 }
@@ -275,11 +312,14 @@ export function createUiElement(type = 'button') {
 }
 
 export function createPolygon(kind = 'walk') {
+  const names = { walk: 'Walk area', depth: 'Depth area', scale: 'Scale area' };
   return {
     id: uniqueId(kind),
-    name: kind === 'walk' ? 'Walk area' : 'Depth area',
+    name: names[kind] || 'Area',
     enabled: true,
     z: kind === 'depth' ? 30 : undefined,
+    topScale: kind === 'scale' ? 0.6 : undefined,
+    bottomScale: kind === 'scale' ? 1 : undefined,
     points: []
   };
 }

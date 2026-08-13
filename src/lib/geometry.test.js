@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas, followCameraForCharacter } from './geometry.js';
+import { pointInPolygon, nearestPointInPolygons, clampPointToWalkAreas, depthZAtPoint, clampCamera, findPathInWalkAreas, followCameraForCharacter, worldViewportForZoom } from './geometry.js';
 
 const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
 
@@ -60,4 +60,21 @@ test('follow camera stops only at actual scene edges', () => {
   const canvas = { width: 1600, height: 1000 };
   assert.deepEqual(followCameraForCharacter({ x: 50, y: 180 }, transform, canvas, viewport), { x: 0, y: 0 });
   assert.deepEqual(followCameraForCharacter({ x: 1550, y: 980 }, transform, canvas, viewport), { x: 800, y: 400 });
+});
+
+
+test('camera zoom preserves GUI aspect ratio while changing world view size', () => {
+  const guiViewport = { width: 1280, height: 720 };
+  assert.deepEqual(worldViewportForZoom(guiViewport, 1), { width: 1280, height: 720, zoom: 1 });
+  assert.deepEqual(worldViewportForZoom(guiViewport, 0.8), { width: 1600, height: 900, zoom: 0.8 });
+  assert.deepEqual(worldViewportForZoom(guiViewport, 1.25), { width: 1024, height: 576, zoom: 1.25 });
+});
+
+test('zoomed follow camera centers using world-space viewport dimensions', () => {
+  const transform = { width: 100, height: 300, anchorX: 0.5, anchorY: 1 };
+  const canvas = { width: 2400, height: 1400 };
+  const view = worldViewportForZoom({ width: 1280, height: 720 }, 0.8);
+  const camera = followCameraForCharacter({ x: 1200, y: 900 }, transform, canvas, view);
+  // visible character center = (1200, 750), world view = 1600x900
+  assert.deepEqual(camera, { x: 400, y: 300 });
 });

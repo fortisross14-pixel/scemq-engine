@@ -1,92 +1,70 @@
-SCEMQ v0.2.0 — Runtime Foundation
-Script Creation Engine for Mara Quibble
+SCEMQ v0.6.0 — Cutscenes, Perspective & Playability
 
-SCEMQ is a reusable, game-agnostic authoring engine for classic scene-based point-and-click adventures.
-Mara Quibble is intended to become its first converted game, but no Mara-specific assumptions are built into the engine.
+Cumulative release over v0.5.5.
 
-PROJECT-LEVEL AUTHORING
-- Load/create local projects through Chrome/Edge File System Access API.
-- Scenes list with new-scene creation.
-- Characters library with playable flag, walk speed, facing and portrait/idle/walk asset slots.
-- Inventory library with item image, description, persistence, starting ownership and stackable flag.
-- Game UI visual editor:
-  - game screen size
-  - persistent viewport rectangle
-  - draggable/resizable verb buttons, inventory, status text, buttons, panels, text and images
-  - button actions (select verb, save, load, hotspots, pause, custom rule)
-  - inventory rows/columns/slot sizing/scroll direction
-  - optional per-verb cursor images
-- Global variables editor.
-- Runtime settings editor.
-- Import/export for project characters, inventory items, UI, variables and settings.
+CUTSCENES AND SEQUENCING
+- Rule actions now run as a real script. New actions: wait, moveCharacterTo,
+  faceCharacter, cameraPanTo, cameraFollowPlayer, setInputEnabled, fadeOut,
+  fadeIn, playSound, playMusic, stopMusic, switchPlayerCharacter, stopDialogue.
+- moveCharacterTo walks ANY character, not just the player, using the scene's
+  walk areas for pathfinding. NPCs can finally move.
+- Awaitable actions (say, wait, moveCharacterTo, cameraPanTo, playAnimation,
+  fadeOut, fadeIn) hold the sequence until they finish. Looping animations
+  never block.
+- setInputEnabled locks and returns player control for staged scenes.
 
-SCENE AUTHORING
-Every scene retains exactly three authoring tabs:
-1. Visual Config
-2. Logic
-3. Dialogues
+SPEECH
+- Lines float above the speaker in that character's own colour instead of
+  overwriting a single status string. Two characters can talk at once.
+- Hold time scales with line length, with a floor and a ceiling. Text speed and
+  the default colour are project settings; per-character colour lives on the
+  character.
+- Clicking a line dismisses it early.
 
-VISUAL CONFIG
-- Dedicated background image separate from objects.
-- Canvas width/height and background color.
-- Props, scenery, characters, hotspots and exits.
-- Drag, resize, duplicate, lock, flip, opacity, visibility and Z.
-- Aspect-ratio lock, grid visibility and 10px snap.
-- Keyboard arrows (Shift = 10px), Delete and Ctrl/Cmd+D duplicate.
-- Object anchors including bottom-center/feet.
-- Object visual states with separate images (broken/repaired, open/closed, etc.).
-- Hotspot verb -> logic rule / dialogue bindings.
-- Interaction walk-to point + facing.
-- Character -> project character definition and NPC/playable role.
-- Scene player selection and start position.
-- Named spawn points.
-- Exit destination scene + destination spawn + transition type.
-- Walk-area polygon editor with draggable vertices.
-- Depth-area polygon editor assigning actor Z by feet position.
-- Per-scene camera mode, start position, dead zone and bounds.
-- Optional scene music and ambient audio.
+PERSPECTIVE
+- Scale areas: a polygon with a top and bottom scale. A character standing at
+  the back of the polygon renders small and grows as they walk forward, with
+  the feet anchor pinned. Drawn in the Visual editor beside walk and depth areas.
 
-LOGIC
-- Scene-scoped rule file.
-- Editable scene variables plus global variables.
-- Events, object target, verb and inventory-item filters.
-- Conditions for flags, variables and inventory ownership.
-- Ordered actions with dropdown-driven targets where possible.
-- Actions include dialogue, variable/flag changes, inventory changes, object state/visibility,
-  player movement, scene changes and character dialogue.
+AUDIO
+- Persistent audio engine with music, ambient and sfx channels and volume
+  settings. Music no longer restarts on a scene change when both scenes use the
+  same track; different tracks crossfade. playSound fires one-shot effects
+  registered per scene.
 
-DIALOGUES
-- One scene-scoped dialogue file per talkable character.
-- Visual draggable node editor.
-- Entry node, speaker, line, choices, target nodes and conditions.
-- Optional project character portrait slot is displayed by the runtime when available.
+PLAYABILITY CHECK (new project panel)
+- Reads every scene and follows the puzzle graph: unobtainable items, flags that
+  are tested but never set, exits gated behind conditions nothing can satisfy,
+  scenes no exit or changeScene reaches, dialogue nodes with no route in, rules
+  pointing at deleted objects, and story-critical items a rule can consume.
+- Items can be marked story-critical in the Inventory panel.
 
-PLAY MODE
-- Play Scene button from the editor.
-- Uses the same authored JSON files currently open in SCEMQ.
-- Player walking constrained to authored walk polygons.
-- Camera follows/fixes according to scene camera settings.
-- Actor dynamic Z resolved from depth polygons.
-- Hotspot verbs and interaction walk-to points.
-- Scene exits and spawn points.
-- Object visual states and show/hide actions.
-- Dialogue tree playback.
-- Persistent UI, selected verbs, status text and inventory.
-- Save/load slots stored locally for runtime testing.
-- Scene music/ambience and optional verb cursor assets.
+TEXT & TRANSLATION (new project panel)
+- Every authored string is collected under a stable key into
+  project/project.strings.json: dialogue beats and choices, say actions, hotspot
+  labels, item names and descriptions, blocked-exit messages, GUI button labels,
+  title screen text.
+- CSV export and import for translators. Rescanning never discards existing
+  translations; it flags rows whose source text changed.
+- Pick the runtime language in Settings. Untranslated lines fall back to source.
 
-EDITOR QUALITY OF LIFE
-- Autosave to the selected project folder.
-- Undo/redo for scene and project edits.
-- Backward-compatible loading of v0.1 scene files with in-memory migration to v0.2 defaults.
-- All game content remains JSON and assets; authors do not edit React/JavaScript.
+INPUT AND UX
+- Right-click fires a configurable verb (Look by default). Keyboard verb
+  shortcuts: W L U T P G O C S Y.
+- Project-level default verb responses in the player character's voice, with
+  multiple lines picked at random, replacing the flat "Nothing happens."
+- Save/load panel with named slots, scene name, timestamp and playtime, plus
+  autosave on scene change. Old saves are migrated, not rejected.
+- Dialogue choices can be marked "ask only once" and disappear after use.
 
-BROWSER REQUIREMENT
-- Current Chrome or Edge.
-- Run from localhost with npm run dev for direct folder access.
+CHARACTERS
+- switchPlayerCharacter hands control to another playable character. Inventory
+  can be shared across characters or kept per character (Day of the Tentacle
+  structure) via a Settings toggle.
 
-COMMANDS
-npm install
-npm run dev
-npm test
-npm run build
+COMPATIBILITY
+- v0.5.5 projects load unchanged. New settings, scale areas and the string table
+  are created with defaults on first load; project.strings.json is added
+  automatically.
+- All earlier systems remain: Scene Manager, camera zoom, sprite-strip
+  animation, title screens, portable scene packages, alpha hotspots.

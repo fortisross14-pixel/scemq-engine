@@ -23,6 +23,7 @@ test('visual config uses simple camera limits', () => {
   assert.deepEqual(visual.walkAreas, []);
   assert.deepEqual(visual.depthAreas, []);
   assert.equal(visual.viewport.followPlayer, true);
+  assert.equal(visual.viewport.zoom, 1);
   assert.deepEqual(visual.viewport.limits, { left: 0, top: 0, right: 1600, bottom: 900 });
 });
 

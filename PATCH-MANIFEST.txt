@@ -1,0 +1,34 @@
+SCEMQ v0.6.0 — patch notes over v0.5.5
+
+New libraries (all unit tested):
+  src/lib/cutscene.js      sequencing helpers, duration and point parsing
+  src/lib/scale.js         Y-interpolated actor perspective
+  src/lib/speech.js        floating speech timing, colour and anchoring
+  src/lib/audio.js         music/ambient/sfx engine with track continuity
+  src/lib/responses.js     random default verb responses
+  src/lib/saves.js         versioned save records, slots, autosave, migration
+  src/lib/validate.js      puzzle-graph playability checker
+  src/lib/localization.js  string extraction, string table, CSV round trip
+
+New components:
+  src/components/ValidationEditor.jsx    Playability Check panel
+  src/components/LocalizationEditor.jsx  Text & Translation panel
+
+Changed:
+  RuntimePlayer  cutscene execution, floating speech, scaling, audio engine,
+                 save/load panel, right-click and keyboard verbs, one-shot
+                 dialogue choices, character switching, onTick rules
+  VisualEditor   scale-area drawing mode and inspector
+  LogicEditor    the v0.6 action vocabulary with inline help
+  SettingsEditor speech, controls, audio, saves, language, verb responses
+  CharactersEditor  per-character speech colour
+  InventoryEditor   story-critical item flag
+  DialogueEditor    "ask only once" choices
+  projectFs      loads and saves project/project.strings.json
+  SceneList      Text & Translation and Playability Check navigation
+  styles.css     speech, fades, save panel, scale areas, report and string table
+
+Known limits:
+  - The Playability Check reports; it never edits your project.
+  - Translations cover authored text. Asset filenames are not localized.
+  - Saves still live in browser localStorage, one record per slot per project.

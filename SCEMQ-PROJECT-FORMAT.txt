@@ -1,109 +1,77 @@
-SCEMQ PROJECT FORMAT v0.2
-
-SCEMQ projects are ordinary folders. Scene content stays scene-scoped; reusable project content lives in project-level modules.
+SCEMQ PROJECT FORMAT v0.4
 
 PROJECT ROOT
 scemq.project.json
+project/project.ui.json
+project/project.variables.json
+project/project.settings.json
+project/project.scene-manager.json
+project/project.strings.json
+characters/<id>.character.json
+inventory/<id>.item.json
+assets/characters/
+assets/inventory/
+assets/ui/
+scenes/<sceneId>/
 
-project/
-  project.ui.json
-  project.variables.json
-  project.settings.json
-
-characters/
-  <character-id>.character.json
-
-inventory/
-  <item-id>.item.json
-
+SCENE MODULES
+scene.meta.<sceneId>.json
+scene.visual.<sceneId>.json
+scene.logic.<sceneId>.json
+objects/<objectId>.object.<sceneId>.json
+dialogues/<characterId>.dialogue.<sceneId>.json
 assets/
-  ui/
-  characters/
-  inventory/
 
-scenes/
-  scene1/
-    scene.meta.scene1.json
-    scene.visual.scene1.json
-    scene.logic.scene1.json
-    objects/
-      <object-id>.object.scene1.json
-    dialogues/
-      <character-id>.dialogue.scene1.json
-    assets/
-      <background, object, state, music and ambient files>
+AUTHORING MODEL
+Project-level: Scene Manager, Characters, Inventory, Game UI, Variables, Settings.
+Scene-level: Visual Config, Logic, Dialogues.
 
-SCENE-SCOPED NAMING
-Scene IDs remain present in every authored scene filename. For example:
-pindle.dialogue.scene1.json
-pindle.dialogue.scene7.json
-fire-alarm.object.scene1.json
-scene.logic.scene1.json
-scene.visual.scene1.json
+Characters are defined once at project level, then placed into scenes by ID. Dialogue speakers and startDialogue actions only reference project character IDs.
 
-PROJECT UI
-project/project.ui.json stores:
-- total game screen dimensions
-- the fixed viewport rectangle through which the scene is shown
-- persistent UI elements
-- verb-button actions
-- inventory layout
-- status text
-- optional cursor image paths
+Start Dialogue actions can optionally select a starting node from that character's dialogue in the current scene. Blank node means the entry node.
 
-CHARACTERS
-characters/<id>.character.json stores reusable character identity and runtime defaults:
-- name
-- playable capability
-- walking speed
-- default facing
-- portrait/idle/walk asset slots
-
-A scene object tagged character references a character ID and can be NPC or playable in that scene.
-Dialogue still remains scene-scoped.
-
-INVENTORY
-inventory/<id>.item.json stores reusable item definition and visual asset.
-Runtime ownership is game state, not authoring data.
-
-VISUAL CONFIG
-scene.visual.<scene>.json stores scene-wide layout/runtime geometry:
-- canvas
-- dedicated background
-- player assignment/start
-- spawn points
-- walk polygons
-- depth polygons
-- camera settings
-- ordered object references
-
-Each object remains in its own *.object.<scene>.json file.
-Objects can define multiple named visual states while retaining one transform/hotspot.
-
-LOGIC
-scene.logic.<scene>.json stores scene variables and rules.
-Rules contain an event, optional conditions and ordered actions.
-Global variables live in project/project.variables.json.
-
-DIALOGUE
-Each talkable scene character uses:
-<character-id>.dialogue.<scene>.json
-
-IMPORT / AI COLLABORATION
-SCEMQ can import/export modular content without requiring code edits:
-- scene visual packages and individual object files
-- scene logic files
-- scene dialogue files
-- project character files
-- project inventory item files
-- project UI
-- project variables
-- project settings
-
-ASSETS
-Scene assets are copied into that scene's assets directory.
-Reusable character/inventory/UI assets are copied into project assets directories.
-The JSON owns paths; the editor/runtime loads those files directly from the selected local project folder.
+PORTABLE SCENE IMPORT
+SCEMQ v0.4 adds a single-file scene package format (*.scemq-scene.json). A package can define missing characters, inventory items, global variables, the full scene, and optional embedded assets. See SCEMQ-SCENE-PACKAGE-FORMAT.txt.
 
 BACKWARD COMPATIBILITY
-SCEMQ v0.2 loads v0.1 scene visual/object files and supplies v0.2 defaults for camera, player, spawn, anchors, visual states, interaction points and runtime geometry. Saving writes the updated v0.2 schema.
+Older SCEMQ project/scene data is upgraded to v0.4 defaults when loaded. Existing v0.3 authoring files remain compatible.
+
+CAMERA VIEW SCALE (v0.5.4)
+Each gameplay scene may set scene.visual.<sceneId>.json -> viewport.zoom.
+The project Game UI still owns the fixed on-screen viewport rectangle. Camera zoom is one scalar, so the world view always inherits that viewport's aspect ratio.
+- 1.00 = 100% / one world pixel per viewport pixel
+- 0.75 = zoomed out / more world visible
+- 1.25 = zoomed in / less world visible
+Existing scenes without viewport.zoom load as 1.00.
+
+
+SCENE MANAGER (v0.5.5)
+project/project.scene-manager.json stores:
+- sceneOrder: stable authored ordering of scene IDs
+- connections: directional structural links between scenes
+- notes: optional director/project flow notes
+
+Connections may be marked bidirectional and classified as progression, return, hub, newGame or custom. In v0.5.5 these links document/organize project flow; runtime gating remains in scene Logic and Exit conditions so puzzle conditions have one authoritative home.
+
+
+SCALE AREAS (v0.6)
+scene.visual.<sceneId>.json -> scaleAreas[]
+Each area is a polygon with topScale and bottomScale. A character whose feet
+anchor is inside the polygon renders at topScale on the polygon's top edge and
+bottomScale on its bottom edge, interpolated linearly on Y. The feet point stays
+pinned while the sprite scales. Scenes without scaleAreas render at 1.00.
+
+STRING TABLE (v0.6)
+project/project.strings.json stores:
+- defaultLanguage and the list of target languages
+- entries keyed by authored location, each with source text, context and a
+  translation per language
+Keys are derived from where a string lives (scene, rule, dialogue node, object),
+so they are recomputed at runtime and never written back into scene files. A
+missing translation falls back to the source string. settings.language selects
+the runtime language.
+
+SAVES (v0.6)
+Save records are versioned (SAVE_FORMAT) and carry the scene id and name, the
+full runtime state, player position, camera, active character and playtime.
+Records written by earlier versions are migrated on load.

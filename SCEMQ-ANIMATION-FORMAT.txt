@@ -1,0 +1,44 @@
+SCEMQ CHARACTER ANIMATION FORMAT — v0.5.0
+
+SCEMQ supports horizontal PNG sprite strips. Each frame must have equal canvas dimensions.
+
+Character JSON additions:
+
+"animations": {
+  "idle": {
+    "src": "mara-idle.png",
+    "frames": 6,
+    "fps": 5,
+    "loop": true,
+    "frameWidth": 0,
+    "frameHeight": 0,
+    "anchorX": 0.5,
+    "anchorY": 1,
+    "allowHorizontalFlip": true
+  }
+},
+"defaultAnimation": "idle",
+"actionAnimations": {
+  "walk": "walk",
+  "look": "look",
+  "pickUp": "pickup",
+  "give": "give",
+  "use": "interact",
+  "open": "interact",
+  "talk": "talk"
+}
+
+frameWidth/frameHeight are optional metadata. SCEMQ derives strip playback from frame count.
+Anchor values are normalized 0..1 and keep animation poses attached to the scene character's world/feet point.
+
+Logic action:
+
+{
+  "type": "playAnimation",
+  "targetId": "mara",
+  "value": "shrug",
+  "waitForCompletion": true
+}
+
+If the requested animation is missing, SCEMQ falls back to idle and then to the legacy static sprite.
+Looping animations never block a rule even if waitForCompletion is checked.

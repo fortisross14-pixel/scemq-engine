@@ -62,6 +62,15 @@ export function depthZAtPoint(point, depthAreas = [], fallback = 30) {
   return matching[matching.length - 1].z ?? fallback;
 }
 
+export function worldViewportForZoom(viewport, zoom = 1) {
+  const safeZoom = Math.max(0.25, Math.min(3, Number(zoom) || 1));
+  return {
+    width: Number(viewport?.width || 0) / safeZoom,
+    height: Number(viewport?.height || 0) / safeZoom,
+    zoom: safeZoom
+  };
+}
+
 export function clampCamera(camera, canvas, viewport, bounds) {
   const b = bounds || { x: 0, y: 0, width: canvas.width, height: canvas.height };
   const maxX = Math.max(b.x, b.x + b.width - viewport.width);
@@ -148,4 +157,16 @@ export function findPathInWalkAreas(start, requestedTarget, areas = []) {
   for (let at = 1; at !== -1; at = prev[at]) indices.push(at);
   indices.reverse();
   return indices.slice(1).map((index) => nodes[index]);
+}
+
+// --- v0.6 camera pan easing (actor scaling lives in scale.js) ---------------
+// Camera pans need an eased position between two clamped camera points.
+export function easeInOutQuad(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+}
+
+export function lerpPoint(a, b, t) {
+  const k = easeInOutQuad(t);
+  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
 }

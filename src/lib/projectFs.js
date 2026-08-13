@@ -12,6 +12,8 @@ import {
 } from './schema.js';
 import { nextSceneId, slugify } from './id.js';
 import { characterAnimationAssetKey, normalizeCharacterAnimationData } from './animation.js';
+import { createSceneManager, normalizeSceneManager } from './sceneManager.js';
+import { createStringTable, STRING_TABLE_KIND } from './localization.js';
 
 function requireDirectoryPicker() {
   if (!window.showDirectoryPicker) {
@@ -68,6 +70,8 @@ async function ensureProjectModules(root, manifest) {
   if (!(await exists(projectDir, 'project.ui.json'))) await writeJson(projectDir, 'project.ui.json', createProjectUi());
   if (!(await exists(projectDir, 'project.variables.json'))) await writeJson(projectDir, 'project.variables.json', createProjectVariables());
   if (!(await exists(projectDir, 'project.settings.json'))) await writeJson(projectDir, 'project.settings.json', createProjectSettings(manifest.name));
+  if (!(await exists(projectDir, 'project.scene-manager.json'))) await writeJson(projectDir, 'project.scene-manager.json', createSceneManager(manifest.scenes || []));
+  if (!(await exists(projectDir, 'project.strings.json'))) await writeJson(projectDir, 'project.strings.json', createStringTable());
 
   return { projectDir, charactersDir, inventoryDir };
 }
@@ -102,6 +106,10 @@ export async function loadProjectBundle(root, manifest) {
   const ui = await readJson(projectDir, 'project.ui.json');
   const variables = await readJson(projectDir, 'project.variables.json');
   const settings = { ...createProjectSettings(manifest.name), ...(await readJson(projectDir, 'project.settings.json')) };
+  const sceneManager = normalizeSceneManager(await readJson(projectDir, 'project.scene-manager.json'), manifest.scenes || []);
+  // The string table is authored data, never generated on load: a project with no
+  // translations simply carries an empty table and the runtime falls back to source text.
+  const strings = { ...createStringTable(), ...(await readJson(projectDir, 'project.strings.json')), kind: STRING_TABLE_KIND };
   const characters = (await scanJsonDirectory(charactersDir, '.character.json')).map(c => normalizeCharacterAnimationData({ ...c, schemaVersion: '0.4' }));
   const inventory = (await scanJsonDirectory(inventoryDir, '.item.json')).map(item => ({
     ...item,
@@ -134,7 +142,7 @@ export async function loadProjectBundle(root, manifest) {
     try { assetUrls.ui[`cursor:${verb}`] = await readProjectAssetUrl(root, 'ui', path); } catch {}
   }
 
-  return { ui, variables, settings, characters, inventory, assetUrls };
+  return { ui, variables, settings, sceneManager, strings, characters, inventory, assetUrls };
 }
 
 export async function saveProjectBundle(root, data) {
@@ -142,6 +150,8 @@ export async function saveProjectBundle(root, data) {
   await writeJson(projectDir, 'project.ui.json', { ...data.ui, schemaVersion: '0.4' });
   await writeJson(projectDir, 'project.variables.json', { ...data.variables, schemaVersion: '0.4' });
   await writeJson(projectDir, 'project.settings.json', { ...data.settings, schemaVersion: '0.4' });
+  await writeJson(projectDir, 'project.scene-manager.json', { ...data.sceneManager, schemaVersion: '0.4', kind: 'scemq-scene-manager' });
+  await writeJson(projectDir, 'project.strings.json', { ...createStringTable(), ...(data.strings || {}), schemaVersion: '0.4', kind: STRING_TABLE_KIND });
 
   const expectedCharacters = new Set();
   for (const character of data.characters || []) {
