@@ -505,3 +505,8 @@ textarea { resize: vertical; }
 .runtime-dialogue-choice-only{width:min(620px,80%);background:rgba(18,21,26,.96);border-radius:8px;padding:10px;bottom:18px}
 .runtime-dialogue-choice-only .runtime-dialogue-choices{padding:0}
 .runtime-dialogue-choice-in-viewport{left:50%;bottom:14px;transform:translateX(-50%);z-index:9002}
+
+.runtime-dialogue-lock{position:absolute;inset:0;z-index:8998;background:transparent;cursor:pointer;pointer-events:auto}
+.runtime-dialogue-lock.waiting-choice{cursor:default}
+.runtime-viewport.dialogue-locked .runtime-world{pointer-events:none}
+.runtime-ui-element.dimmed{opacity:.48;filter:saturate(.6)}

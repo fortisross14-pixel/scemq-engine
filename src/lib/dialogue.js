@@ -60,3 +60,28 @@ export function resolveDialogueStartNode(dialogue, requestedNodeId = '') {
   if (requestedNodeId && (dialogue.nodes || []).some(node => node.id === requestedNodeId)) return requestedNodeId;
   return dialogue.entryNodeId || dialogue.nodes?.[0]?.id || '';
 }
+
+
+export function createDialogueRuntimeState(dialogue, nodeId) {
+  if (!dialogue || !nodeId) return null;
+  const node = (dialogue.nodes || []).find(item => item.id === nodeId);
+  if (!node) return null;
+  const beats = node.beats || [];
+  return { data: dialogue, nodeId, beatIndex: 0, awaitingChoice: beats.length === 0 };
+}
+
+export function advanceDialogueRuntimeState(state, node, visibleChoiceCount = 0) {
+  if (!state || !node || state.awaitingChoice) return state;
+  const beats = node.beats || [];
+  const index = Number(state.beatIndex || 0);
+  if (index < beats.length - 1) return { ...state, beatIndex: index + 1 };
+  if (visibleChoiceCount > 0) return { ...state, awaitingChoice: true };
+  return null;
+}
+
+export function moveDialogueRuntimeToNode(state, dialogue, targetNodeId) {
+  if (!state || !dialogue || !targetNodeId) return null;
+  const node = (dialogue.nodes || []).find(item => item.id === targetNodeId);
+  if (!node) return null;
+  return { ...state, nodeId: targetNodeId, beatIndex: 0, awaitingChoice: (node.beats || []).length === 0 };
+}

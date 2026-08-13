@@ -21,3 +21,32 @@ test('dialogue can start at a requested authored node and falls back to entry',a
  assert.equal(resolveDialogueStartNode(d,'package-called'),'package-called');
  assert.equal(resolveDialogueStartNode(d,'missing'),'start');
 });
+
+test('dialogue runtime advances beats then waits for choices', async()=>{
+ const { createDialogueRuntimeState, advanceDialogueRuntimeState } = await import('./dialogue.js');
+ const dialogue={nodes:[{id:'start',beats:[{id:'b1'},{id:'b2'}],choices:[{id:'c1'}]}]};
+ const node=dialogue.nodes[0];
+ let state=createDialogueRuntimeState(dialogue,'start');
+ assert.equal(state.beatIndex,0);
+ assert.equal(state.awaitingChoice,false);
+ state=advanceDialogueRuntimeState(state,node,1);
+ assert.equal(state.beatIndex,1);
+ assert.equal(state.awaitingChoice,false);
+ state=advanceDialogueRuntimeState(state,node,1);
+ assert.equal(state.beatIndex,1);
+ assert.equal(state.awaitingChoice,true);
+ assert.equal(advanceDialogueRuntimeState(state,node,1),state);
+});
+
+test('dialogue runtime closes after final beat when there are no choices', async()=>{
+ const { createDialogueRuntimeState, advanceDialogueRuntimeState } = await import('./dialogue.js');
+ const dialogue={nodes:[{id:'start',beats:[{id:'b1'}],choices:[]}]};
+ const state=createDialogueRuntimeState(dialogue,'start');
+ assert.equal(advanceDialogueRuntimeState(state,dialogue.nodes[0],0),null);
+});
+
+test('choice-only dialogue node begins waiting for a choice', async()=>{
+ const { createDialogueRuntimeState } = await import('./dialogue.js');
+ const dialogue={nodes:[{id:'start',beats:[],choices:[{id:'c1'}]}]};
+ assert.equal(createDialogueRuntimeState(dialogue,'start').awaitingChoice,true);
+});
