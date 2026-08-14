@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { animationDurationMs, frameIndexAtTime, horizontalFacingFromDelta, horizontalFacingToward, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from './animation.js';
+import { animationDurationMs, animationGrid, frameIndexAtTime, horizontalFacingFromDelta, horizontalFacingToward, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from './animation.js';
 
 test('frame animation timing loops and clamps',()=>{
  const a={frames:4,fps:10,loop:true};
@@ -53,4 +53,31 @@ test('walk-right alias can be reused and mirrored to walk left',()=>{
   const resolved=resolveAnimation(c,'walk','left');
   assert.equal(resolved.name,'walk-right');
   assert.equal(shouldMirror(resolved.animation,'left',resolved.name),true);
+});
+
+
+test('sprite sheets support columns by rows in row-major order',()=>{
+  assert.deepEqual(animationGrid({columns:6,rows:2}),{columns:6,rows:2,frames:12});
+  const legacy=animationGrid({frames:8});
+  assert.deepEqual(legacy,{columns:8,rows:1,frames:8});
+});
+
+test('loop delay pauses on the first frame between playback cycles',()=>{
+  const a={columns:4,rows:1,fps:10,loop:true,loopDelaySeconds:1};
+  assert.equal(frameIndexAtTime(a,0),0);
+  assert.equal(frameIndexAtTime(a,999),0);
+  assert.equal(frameIndexAtTime(a,1000),0);
+  assert.equal(frameIndexAtTime(a,1100),1);
+  assert.equal(frameIndexAtTime(a,1399),3);
+  assert.equal(frameIndexAtTime(a,1400),0);
+  assert.equal(frameIndexAtTime(a,2399),0);
+  assert.equal(frameIndexAtTime(a,2500),1);
+});
+
+test('normalization migrates legacy horizontal strips to one-row grids',()=>{
+  const c=normalizeCharacterAnimationData({id:'mara',animations:{walk:{src:'walk.png',frames:8,fps:10,loop:true}}});
+  assert.equal(c.animations.walk.columns,8);
+  assert.equal(c.animations.walk.rows,1);
+  assert.equal(c.animations.walk.frames,8);
+  assert.equal(c.animations.walk.loopDelaySeconds,0);
 });

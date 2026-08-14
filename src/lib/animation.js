@@ -25,13 +25,25 @@ export function horizontalFacingToward(fromX, targetX, current = 'right', epsilo
   return horizontalFacingFromDelta((Number(targetX) || 0) - (Number(fromX) || 0), current, epsilon);
 }
 
+export function animationGrid(animation = {}) {
+  const legacyFrames = Math.max(1, Number(animation.frames || 1));
+  const hasGrid = animation.columns != null || animation.rows != null;
+  const columns = Math.max(1, Number(hasGrid ? (animation.columns || 1) : legacyFrames));
+  const rows = Math.max(1, Number(hasGrid ? (animation.rows || 1) : 1));
+  return { columns, rows, frames: columns * rows };
+}
+
 export function normalizeAnimation(name, animation = {}) {
+  const grid = animationGrid(animation);
   return {
     name,
     src: animation.src || '',
-    frames: Math.max(1, Number(animation.frames || 1)),
+    columns: grid.columns,
+    rows: grid.rows,
+    frames: grid.frames,
     fps: Math.max(1, Number(animation.fps || 8)),
     loop: animation.loop ?? (name === 'idle' || name === 'walk' || name === 'talk'),
+    loopDelaySeconds: Math.max(0, Number(animation.loopDelaySeconds || 0)),
     frameWidth: Number(animation.frameWidth || 0),
     frameHeight: Number(animation.frameHeight || 0),
     // Kept for backwards-compatible files. Scene object feet are authoritative
@@ -57,17 +69,27 @@ export function normalizeCharacterAnimationData(character = {}) {
 }
 
 export function animationDurationMs(animation) {
-  const frames = Math.max(1, Number(animation?.frames || 1));
+  const { frames } = animationGrid(animation);
   const fps = Math.max(1, Number(animation?.fps || 8));
   return (frames / fps) * 1000;
 }
 
 export function frameIndexAtTime(animation, elapsedMs) {
-  const frames = Math.max(1, Number(animation?.frames || 1));
+  const { frames } = animationGrid(animation);
   const fps = Math.max(1, Number(animation?.fps || 8));
-  const raw = Math.floor(Math.max(0, elapsedMs) / (1000 / fps));
-  if (animation?.loop) return raw % frames;
-  return Math.min(frames - 1, raw);
+  const frameMs = 1000 / fps;
+  let localElapsed = Math.max(0, Number(elapsedMs || 0));
+  if (animation?.loop) {
+    const delayMs = Math.max(0, Number(animation?.loopDelaySeconds || 0)) * 1000;
+    const animationMs = frames * frameMs;
+    const cycleMs = delayMs + animationMs;
+    if (cycleMs > 0) localElapsed %= cycleMs;
+    // A looping animation pauses on frame 1 before each playback cycle.
+    if (localElapsed < delayMs) return 0;
+    localElapsed -= delayMs;
+    return Math.min(frames - 1, Math.floor(localElapsed / frameMs));
+  }
+  return Math.min(frames - 1, Math.floor(localElapsed / frameMs));
 }
 
 function compactName(value = '') {
@@ -143,9 +165,9 @@ export function characterAnimationAssetKey(characterId, animationName) {
 }
 
 export function animationFrameAspectRatio(animation, naturalWidth, naturalHeight) {
-  const frames = Math.max(1, Number(animation?.frames || 1));
-  const frameWidth = Number(animation?.frameWidth || 0) || (Number(naturalWidth || 0) / frames);
-  const frameHeight = Number(animation?.frameHeight || 0) || Number(naturalHeight || 0);
+  const { columns, rows } = animationGrid(animation);
+  const frameWidth = Number(animation?.frameWidth || 0) || (Number(naturalWidth || 0) / columns);
+  const frameHeight = Number(animation?.frameHeight || 0) || (Number(naturalHeight || 0) / rows);
   if (!(frameWidth > 0) || !(frameHeight > 0)) return 0;
   return frameWidth / frameHeight;
 }

@@ -1,9 +1,9 @@
 import React,{useEffect,useRef,useState} from 'react';
-import { frameIndexAtTime } from '../lib/animation.js';
+import { animationGrid, frameIndexAtTime } from '../lib/animation.js';
 
 export default function SpriteStrip({src,animation,playKey='',playing=true,flipX=false,className='',style,onStart,onFrame,onComplete}){
  const [frame,setFrame]=useState(0);const raf=useRef(0);const completed=useRef(false);const started=useRef(false);
- const frames=Math.max(1,Number(animation?.frames||1));
+ const {columns,rows,frames}=animationGrid(animation);
  useEffect(()=>{
   cancelAnimationFrame(raf.current);setFrame(0);completed.current=false;started.current=false;
   if(!src||!playing)return;
@@ -16,8 +16,10 @@ export default function SpriteStrip({src,animation,playKey='',playing=true,flipX
    raf.current=requestAnimationFrame(tick);
   }
   raf.current=requestAnimationFrame(tick);return()=>cancelAnimationFrame(raf.current);
- },[src,playKey,playing,frames,animation?.fps,animation?.loop]);
+ },[src,playKey,playing,frames,columns,rows,animation?.fps,animation?.loop,animation?.loopDelaySeconds]);
  if(!src)return null;
- const pos=frames<=1?0:(frame/(frames-1))*100;
- return <div className={`sprite-strip ${className}`} style={{...style,backgroundImage:`url("${src}")`,backgroundRepeat:'no-repeat',backgroundSize:`${frames*100}% 100%`,backgroundPosition:`${pos}% 0%`,transform:flipX?'scaleX(-1)':undefined}}/>;
+ const col=frame%columns,row=Math.floor(frame/columns);
+ const posX=columns<=1?0:(col/(columns-1))*100;
+ const posY=rows<=1?0:(row/(rows-1))*100;
+ return <div className={`sprite-strip ${className}`} style={{...style,backgroundImage:`url("${src}")`,backgroundRepeat:'no-repeat',backgroundSize:`${columns*100}% ${rows*100}%`,backgroundPosition:`${posX}% ${posY}%`,transform:flipX?'scaleX(-1)':undefined}}/>;
 }

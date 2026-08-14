@@ -21,3 +21,8 @@ test('height edits preserve original ratio',()=>{
   assert.equal(next.width,150);
   assert.equal(next.height,300);
 });
+
+
+test('sprite-grid aspect ratio uses one cell, not the whole sheet',()=>{
+  assert.equal(frameAspectRatioFromImage(1200,800,{columns:6,rows:2}),0.5);
+});

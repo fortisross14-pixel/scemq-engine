@@ -1,12 +1,14 @@
+import { animationGrid } from './animation.js';
+
 export function safeAspectRatio(value, fallback = 1) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export function frameAspectRatioFromImage(naturalWidth, naturalHeight, animation = null) {
-  const frames = Math.max(1, Number(animation?.frames || 1));
-  const frameWidth = Number(animation?.frameWidth || 0) || Number(naturalWidth || 0) / frames;
-  const frameHeight = Number(animation?.frameHeight || 0) || Number(naturalHeight || 0);
+  const { columns, rows } = animationGrid(animation || {});
+  const frameWidth = Number(animation?.frameWidth || 0) || Number(naturalWidth || 0) / columns;
+  const frameHeight = Number(animation?.frameHeight || 0) || Number(naturalHeight || 0) / rows;
   if (!(frameWidth > 0) || !(frameHeight > 0)) return 0;
   return frameWidth / frameHeight;
 }
