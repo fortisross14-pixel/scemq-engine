@@ -510,3 +510,24 @@ textarea { resize: vertical; }
 .runtime-dialogue-lock.waiting-choice{cursor:default}
 .runtime-viewport.dialogue-locked .runtime-world{pointer-events:none}
 .runtime-ui-element.dimmed{opacity:.48;filter:saturate(.6)}
+
+/* SCEMQ v0.6.8 · Logic Rules / Variables subtabs */
+.logic-editor-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.logic-subtabs { flex: 0 0 42px; display: flex; align-items: end; gap: 4px; padding: 0 12px; background: #14171b; border-bottom: 1px solid var(--line-soft); }
+.logic-subtabs button { height: 42px; padding: 0 16px; border: 0; border-radius: 0; background: transparent; color: #858d98; border-bottom: 2px solid transparent; font-size: 11px; font-weight: 800; }
+.logic-subtabs button:hover { color: #c4cad2; }
+.logic-subtabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.logic-subtabs button span { display: inline-block; min-width: 18px; margin-left: 7px; padding: 2px 5px; border-radius: 10px; background: #252a31; color: #8e96a2; font-size: 9px; line-height: 1.2; }
+.logic-subtabs button.active span { background: #3a3020; color: #e2bd73; }
+.logic-editor-shell > .logic-layout,
+.logic-editor-shell > .logic-variables-pane { flex: 1 1 auto; min-height: 0; }
+.logic-variables-pane { display: flex; flex-direction: column; overflow: hidden; background: #171a1f; }
+.logic-variables-content { min-height: 0; overflow: auto; padding: 16px; }
+.logic-variables-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; padding: 12px 14px; border: 1px solid #2e343c; border-radius: 7px; background: #1b1f25; }
+.logic-variables-header strong, .logic-variables-header small { display: block; }
+.logic-variables-header small { color: var(--muted); margin-top: 4px; font-size: 10px; }
+.logic-variables-header > span { min-width: 28px; text-align: center; padding: 5px 7px; border-radius: 14px; background: #3a3020; color: #e2bd73; font-size: 10px; font-weight: 900; }
+.scene-variable-editor.standalone { padding: 0; border-bottom: 0; max-width: 900px; }
+.scene-variable-editor.standalone .scene-variable-row { grid-template-columns: minmax(220px, 1.5fr) minmax(120px, .6fr) minmax(160px, .8fr) 32px; gap: 8px; }
+.scene-variable-editor.standalone .scene-variable-row input,
+.scene-variable-editor.standalone .scene-variable-row select { font-size: 11px; padding: 8px; }
