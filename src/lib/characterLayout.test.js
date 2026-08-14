@@ -26,3 +26,14 @@ test('height edits preserve original ratio',()=>{
 test('sprite-grid aspect ratio uses one cell, not the whole sheet',()=>{
   assert.equal(frameAspectRatioFromImage(1200,800,{columns:6,rows:2}),0.5);
 });
+
+test('frame aspect ratio uses visible content bounds when available',()=>{
+  const ratio=frameAspectRatioFromImage(1536,1024,{columns:6,rows:1,contentBounds:{x:0,y:.1,width:1,height:.8}});
+  assert.ok(Math.abs(ratio-(256/819.2))<1e-9);
+});
+
+test('manual visible-pixel trim changes the locked character ratio',()=>{
+  const ratio=frameAspectRatioFromImage(1200,800,{columns:6,rows:2,detectedContentBounds:{x:0,y:0,width:1,height:1},trimPixels:{top:50,bottom:50,left:0,right:0}});
+  // one frame is 200x400; removing 100px vertically leaves 200x300
+  assert.ok(Math.abs(ratio-(2/3))<1e-9);
+});

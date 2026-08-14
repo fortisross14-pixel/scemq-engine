@@ -12,7 +12,7 @@ import { AudioEngine } from '../lib/audio.js';
 import { AUTOSAVE_SLOT, createSaveRecord, formatPlaytime, listSaves, readSave, writeSave } from '../lib/saves.js';
 import { createTranslator, key as stringKey } from '../lib/localization.js';
 import SpriteStrip from './SpriteStrip.jsx';
-import { characterAnimationAssetKey, horizontalFacingFromDelta, horizontalFacingToward, requestedAnimationForVerb, resolveAnimation, shouldMirror } from '../lib/animation.js';
+import { animationContentAspectRatio, characterAnimationAssetKey, horizontalFacingFromDelta, horizontalFacingToward, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from '../lib/animation.js';
 
 const VERB_KEYS = { w: 'walk', l: 'look', u: 'use', t: 'talk', p: 'pickUp', g: 'give', o: 'open', c: 'close', s: 'push', y: 'pull' };
 
@@ -145,6 +145,14 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const nextFacing=mode==='manual'&&['left','right'].includes(explicit)?explicit:horizontalFacingToward(actor.x,targetX,actorFacing[playerId]||'right');
     setActorFacing(f=>({...f,[playerId]:nextFacing}));
     setTimeout(()=>performInteraction(obj,action.verb,action.itemId||''),0);
+  }
+
+  function effectiveCharacterTransform(obj){
+    const t=obj?.transform||{};if(obj?.type!=='character')return t;
+    const def=projectData.characters.find(c=>c.id===obj.character?.characterId);if(!def)return t;
+    const c=normalizeCharacterAnimationData(def);const canonicalName=c.defaultAnimation||(c.animations.idle?'idle':'');const canonical=canonicalName?c.animations[canonicalName]:null;const ratio=animationContentAspectRatio(canonical);
+    if(!(ratio>0))return t;
+    const height=Math.max(1,Number(t.height||1));return{...t,width:height*ratio,aspectRatio:ratio,lockAspect:true};
   }
 
   function resolveCharacterRender(obj,isPlayer=false){
@@ -671,7 +679,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   }
 
   const runtimeZoom=Math.max(.25,Math.min(3,Number(bundle.visual.viewport?.zoom)||1));
-  const playerT=playerObject?.transform||{width:80,height:160,z:30,opacity:1};
+  const playerT=playerObject?effectiveCharacterTransform(playerObject):{width:80,height:160,z:30,opacity:1};
   const playerScale=scaleForPoint(playerPos);
   const playerBox=scaledRenderBox(playerPos,playerT,playerScale);
   const playerZ=depthZAtPoint(playerPos,bundle.visual.depthAreas||[],playerT.z||30);
@@ -682,7 +690,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const obj=speakerId?characterObjectForId(speakerId):null;
     if(!obj)return {x:camera.x+worldViewportForZoom(ui.viewport,runtimeZoom).width/2,y:camera.y+80/runtimeZoom};
     const point=actorPosition(obj.id,obj);
-    return speechAnchorForActor(point,obj.transform,scaleForPoint(point),obj.speechAnchor);
+    return speechAnchorForActor(point,effectiveCharacterTransform(obj),scaleForPoint(point),obj.speechAnchor);
   }
   function speechScreenAnchorFor(speakerId=''){
     return speechScreenPosition(speechWorldAnchorFor(speakerId),camera,runtimeZoom,ui.viewport);
@@ -698,7 +706,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       <div className="runtime-world" style={{width:bundle.visual.canvas.width,height:bundle.visual.canvas.height,transformOrigin:'top left',transform:`translate(${-camera.x*runtimeZoom}px, ${-camera.y*runtimeZoom}px) scale(${runtimeZoom})`,backgroundColor:bundle.visual.canvas.backgroundColor}}>
         {bundle.assetUrls.__background&&<img className={`runtime-background fit-${bundle.visual.background.fit||'stretch'}`} src={bundle.assetUrls.__background} alt=""/>}
         {viewportObjects.map(obj=>{
-          const t=obj.transform,url=obj.type==='character'?staticCharacterAsset(obj,false):activeObjectAsset(obj),hr=hotspotRect(obj),anim=obj.type==='character'?resolveCharacterRender(obj,false):null;
+          const t=obj.type==='character'?effectiveCharacterTransform(obj):obj.transform,url=obj.type==='character'?staticCharacterAsset(obj,false):activeObjectAsset(obj),hr=hotspotRect(obj),anim=obj.type==='character'?resolveCharacterRender(obj,false):null;
           const isActor=obj.type==='character';
           const actorPoint=isActor?actorPosition(obj.id,obj):null;
           const actorScale=isActor?scaleForPoint(actorPoint):1;

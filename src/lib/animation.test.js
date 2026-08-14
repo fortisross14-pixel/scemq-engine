@@ -81,3 +81,23 @@ test('normalization migrates legacy horizontal strips to one-row grids',()=>{
   assert.equal(c.animations.walk.frames,8);
   assert.equal(c.animations.walk.loopDelaySeconds,0);
 });
+
+test('visible content aspect ratio ignores transparent frame padding',()=>{
+  const a=normalizeCharacterAnimationData({id:'nib',animations:{idle:{src:'nib.png',columns:6,rows:1,contentBounds:{x:0,y:.1,width:1,height:.8},framePixelWidth:256,framePixelHeight:1024,contentPixelWidth:256,contentPixelHeight:819.2}}}).animations.idle;
+  assert.ok(Math.abs(a.contentPixelWidth/a.contentPixelHeight-(256/819.2))<1e-9);
+});
+
+test('manual animation trim removes pixels from detected visible bounds', async()=>{
+  const { effectiveAnimationContentBounds } = await import('./animation.js');
+  const a={framePixelWidth:200,framePixelHeight:400,detectedContentBounds:{x:.1,y:.1,width:.8,height:.8},trimPixels:{top:20,bottom:40,left:10,right:30}};
+  const b=effectiveAnimationContentBounds(a,200,400);
+  assert.ok(Math.abs(b.x-.15)<1e-9);
+  assert.ok(Math.abs(b.y-.15)<1e-9);
+  assert.ok(Math.abs(b.width-.6)<1e-9);
+  assert.ok(Math.abs(b.height-.65)<1e-9);
+});
+
+test('animation normalization preserves four-sided pixel trim',()=>{
+  const c=normalizeCharacterAnimationData({animations:{idle:{src:'idle.png',columns:6,rows:2,trimPixels:{top:4,right:8,bottom:12,left:16}}}});
+  assert.deepEqual(c.animations.idle.trimPixels,{top:4,right:8,bottom:12,left:16});
+});

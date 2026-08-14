@@ -33,6 +33,61 @@ export function animationGrid(animation = {}) {
   return { columns, rows, frames: columns * rows };
 }
 
+export function animationTrimPixels(animation = {}) {
+  const t = animation.trimPixels || {};
+  return {
+    top: Math.max(0, Number(t.top ?? animation.trimTop ?? 0) || 0),
+    right: Math.max(0, Number(t.right ?? animation.trimRight ?? 0) || 0),
+    bottom: Math.max(0, Number(t.bottom ?? animation.trimBottom ?? 0) || 0),
+    left: Math.max(0, Number(t.left ?? animation.trimLeft ?? 0) || 0)
+  };
+}
+
+export function trimBoundsForFrame(animation = {}, frameWidth = 0, frameHeight = 0, baseBounds = null) {
+  const fw = Math.max(1, Number(frameWidth || animation.framePixelWidth || animation.frameWidth || 1));
+  const fh = Math.max(1, Number(frameHeight || animation.framePixelHeight || animation.frameHeight || 1));
+  const base = baseBounds && !baseBounds.empty ? baseBounds : { x: 0, y: 0, width: 1, height: 1, empty: false };
+  const raw = animationTrimPixels(animation);
+  const leftN = raw.left / fw;
+  const rightN = raw.right / fw;
+  const topN = raw.top / fh;
+  const bottomN = raw.bottom / fh;
+  const maxWidth = Math.max(0.001, Number(base.width || 1));
+  const maxHeight = Math.max(0.001, Number(base.height || 1));
+  const left = Math.min(leftN, maxWidth - 0.001);
+  const right = Math.min(rightN, Math.max(0, maxWidth - left - 0.001));
+  const top = Math.min(topN, maxHeight - 0.001);
+  const bottom = Math.min(bottomN, Math.max(0, maxHeight - top - 0.001));
+  return {
+    x: Number(base.x || 0) + left,
+    y: Number(base.y || 0) + top,
+    width: maxWidth - left - right,
+    height: maxHeight - top - bottom,
+    empty: false
+  };
+}
+
+export function intersectNormalizedBounds(a, b) {
+  if (!a || a.empty) return b || null;
+  if (!b || b.empty) return a || null;
+  const x1 = Math.max(Number(a.x || 0), Number(b.x || 0));
+  const y1 = Math.max(Number(a.y || 0), Number(b.y || 0));
+  const x2 = Math.min(Number(a.x || 0) + Number(a.width || 0), Number(b.x || 0) + Number(b.width || 0));
+  const y2 = Math.min(Number(a.y || 0) + Number(a.height || 0), Number(b.y || 0) + Number(b.height || 0));
+  if (x2 <= x1 || y2 <= y1) return { x: x1, y: y1, width: 0.001, height: 0.001, empty: false };
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1, empty: false };
+}
+
+export function effectiveAnimationContentBounds(animation = {}, frameWidth = 0, frameHeight = 0) {
+  // detectedContentBounds is the raw alpha union. Manual pixel trim is then
+  // applied INSIDE that visible box, which makes the controls predictable:
+  // Left 10 always removes ten painted-content pixels from the left edge.
+  const detected = animation.detectedContentBounds && !animation.detectedContentBounds.empty
+    ? animation.detectedContentBounds
+    : (animation.contentBounds && !animation.contentBounds.empty ? animation.contentBounds : { x: 0, y: 0, width: 1, height: 1, empty: false });
+  return trimBoundsForFrame(animation, frameWidth, frameHeight, detected);
+}
+
 export function normalizeAnimation(name, animation = {}) {
   const grid = animationGrid(animation);
   return {
@@ -46,6 +101,26 @@ export function normalizeAnimation(name, animation = {}) {
     loopDelaySeconds: Math.max(0, Number(animation.loopDelaySeconds || 0)),
     frameWidth: Number(animation.frameWidth || 0),
     frameHeight: Number(animation.frameHeight || 0),
+    // Transparent sprite-sheet padding is not part of the character's visible size.
+    // contentBounds is normalized within ONE frame cell and is calculated from the
+    // union of non-transparent pixels across all frames.
+    detectedContentBounds: animation.detectedContentBounds && !animation.detectedContentBounds.empty ? {
+      x: Math.max(0, Math.min(1, Number(animation.detectedContentBounds.x || 0))),
+      y: Math.max(0, Math.min(1, Number(animation.detectedContentBounds.y || 0))),
+      width: Math.max(0.001, Math.min(1, Number(animation.detectedContentBounds.width || 1))),
+      height: Math.max(0.001, Math.min(1, Number(animation.detectedContentBounds.height || 1)))
+    } : null,
+    contentBounds: animation.contentBounds && !animation.contentBounds.empty ? {
+      x: Math.max(0, Math.min(1, Number(animation.contentBounds.x || 0))),
+      y: Math.max(0, Math.min(1, Number(animation.contentBounds.y || 0))),
+      width: Math.max(0.001, Math.min(1, Number(animation.contentBounds.width || 1))),
+      height: Math.max(0.001, Math.min(1, Number(animation.contentBounds.height || 1)))
+    } : null,
+    contentPixelWidth: Math.max(0, Number(animation.contentPixelWidth || 0)),
+    contentPixelHeight: Math.max(0, Number(animation.contentPixelHeight || 0)),
+    framePixelWidth: Math.max(0, Number(animation.framePixelWidth || 0)),
+    framePixelHeight: Math.max(0, Number(animation.framePixelHeight || 0)),
+    trimPixels: animationTrimPixels(animation),
     // Kept for backwards-compatible files. Scene object feet are authoritative
     // at runtime; these values no longer move the actor's world anchor.
     anchorX: Number.isFinite(Number(animation.anchorX)) ? Number(animation.anchorX) : 0.5,
@@ -166,8 +241,21 @@ export function characterAnimationAssetKey(characterId, animationName) {
 
 export function animationFrameAspectRatio(animation, naturalWidth, naturalHeight) {
   const { columns, rows } = animationGrid(animation);
-  const frameWidth = Number(animation?.frameWidth || 0) || (Number(naturalWidth || 0) / columns);
-  const frameHeight = Number(animation?.frameHeight || 0) || (Number(naturalHeight || 0) / rows);
+  const frameWidth = Number(animation?.frameWidth || animation?.framePixelWidth || 0) || (Number(naturalWidth || 0) / columns);
+  const frameHeight = Number(animation?.frameHeight || animation?.framePixelHeight || 0) || (Number(naturalHeight || 0) / rows);
   if (!(frameWidth > 0) || !(frameHeight > 0)) return 0;
-  return frameWidth / frameHeight;
+  const b = effectiveAnimationContentBounds(animation, frameWidth, frameHeight);
+  return (frameWidth * Number(b.width || 1)) / Math.max(1, frameHeight * Number(b.height || 1));
+}
+
+export function animationContentAspectRatio(animation) {
+  const fw = Number(animation?.framePixelWidth || animation?.frameWidth || 0);
+  const fh = Number(animation?.framePixelHeight || animation?.frameHeight || 0);
+  if (fw > 0 && fh > 0) {
+    const b = effectiveAnimationContentBounds(animation, fw, fh);
+    return (fw * Number(b.width || 1)) / Math.max(1, fh * Number(b.height || 1));
+  }
+  const w = Number(animation?.contentPixelWidth || 0);
+  const h = Number(animation?.contentPixelHeight || 0);
+  return w > 0 && h > 0 ? w / h : 0;
 }
