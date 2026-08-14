@@ -32,8 +32,8 @@ test('frame aspect ratio uses visible content bounds when available',()=>{
   assert.ok(Math.abs(ratio-(256/819.2))<1e-9);
 });
 
-test('manual visible-pixel trim changes the locked character ratio',()=>{
-  const ratio=frameAspectRatioFromImage(1200,800,{columns:6,rows:2,detectedContentBounds:{x:0,y:0,width:1,height:1},trimPixels:{top:50,bottom:50,left:0,right:0}});
-  // one frame is 200x400; removing 100px vertically leaves 200x300
+test('whole-sheet crop changes frame ratio before the grid is divided',()=>{
+  const ratio=frameAspectRatioFromImage(1200,800,{columns:6,rows:2,detectedContentBounds:{x:0,y:0,width:1,height:1},sheetCropPixels:{top:100,bottom:100,left:0,right:0}});
+  // cropped sheet is 1200x600; each 6x2 frame is 200x300
   assert.ok(Math.abs(ratio-(2/3))<1e-9);
 });

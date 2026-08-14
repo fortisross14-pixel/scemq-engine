@@ -1,4 +1,4 @@
-import { animationGrid, effectiveAnimationContentBounds } from './animation.js';
+import { animationGrid, animationSheetGeometry, effectiveAnimationContentBounds } from './animation.js';
 
 export function safeAspectRatio(value, fallback = 1) {
   const n = Number(value);
@@ -7,10 +7,11 @@ export function safeAspectRatio(value, fallback = 1) {
 
 export function frameAspectRatioFromImage(naturalWidth, naturalHeight, animation = null) {
   const { columns, rows } = animationGrid(animation || {});
-  const frameWidth = Number(animation?.frameWidth || animation?.framePixelWidth || 0) || Number(naturalWidth || 0) / columns;
-  const frameHeight = Number(animation?.frameHeight || animation?.framePixelHeight || 0) || Number(naturalHeight || 0) / rows;
+  const geometry = animationSheetGeometry(animation || {}, naturalWidth, naturalHeight);
+  const frameWidth = Number(animation?.frameWidth || animation?.framePixelWidth || 0) || geometry.frameWidth || Number(naturalWidth || 0) / columns;
+  const frameHeight = Number(animation?.frameHeight || animation?.framePixelHeight || 0) || geometry.frameHeight || Number(naturalHeight || 0) / rows;
   if (!(frameWidth > 0) || !(frameHeight > 0)) return 0;
-  const b = effectiveAnimationContentBounds(animation || {}, frameWidth, frameHeight);
+  const b = effectiveAnimationContentBounds(animation || {});
   return (frameWidth * Number(b.width || 1)) / Math.max(1, frameHeight * Number(b.height || 1));
 }
 

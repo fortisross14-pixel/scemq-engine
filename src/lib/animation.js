@@ -33,59 +33,48 @@ export function animationGrid(animation = {}) {
   return { columns, rows, frames: columns * rows };
 }
 
-export function animationTrimPixels(animation = {}) {
-  const t = animation.trimPixels || {};
+export function animationSheetCrop(animation = {}) {
+  const c = animation.sheetCropPixels || animation.sheetCrop || {};
   return {
-    top: Math.max(0, Number(t.top ?? animation.trimTop ?? 0) || 0),
-    right: Math.max(0, Number(t.right ?? animation.trimRight ?? 0) || 0),
-    bottom: Math.max(0, Number(t.bottom ?? animation.trimBottom ?? 0) || 0),
-    left: Math.max(0, Number(t.left ?? animation.trimLeft ?? 0) || 0)
+    top: Math.max(0, Number(c.top ?? animation.cropTop ?? 0) || 0),
+    right: Math.max(0, Number(c.right ?? animation.cropRight ?? 0) || 0),
+    bottom: Math.max(0, Number(c.bottom ?? animation.cropBottom ?? 0) || 0),
+    left: Math.max(0, Number(c.left ?? animation.cropLeft ?? 0) || 0)
   };
 }
 
-export function trimBoundsForFrame(animation = {}, frameWidth = 0, frameHeight = 0, baseBounds = null) {
-  const fw = Math.max(1, Number(frameWidth || animation.framePixelWidth || animation.frameWidth || 1));
-  const fh = Math.max(1, Number(frameHeight || animation.framePixelHeight || animation.frameHeight || 1));
-  const base = baseBounds && !baseBounds.empty ? baseBounds : { x: 0, y: 0, width: 1, height: 1, empty: false };
-  const raw = animationTrimPixels(animation);
-  const leftN = raw.left / fw;
-  const rightN = raw.right / fw;
-  const topN = raw.top / fh;
-  const bottomN = raw.bottom / fh;
-  const maxWidth = Math.max(0.001, Number(base.width || 1));
-  const maxHeight = Math.max(0.001, Number(base.height || 1));
-  const left = Math.min(leftN, maxWidth - 0.001);
-  const right = Math.min(rightN, Math.max(0, maxWidth - left - 0.001));
-  const top = Math.min(topN, maxHeight - 0.001);
-  const bottom = Math.min(bottomN, Math.max(0, maxHeight - top - 0.001));
+export function animationSheetGeometry(animation = {}, naturalWidth = 0, naturalHeight = 0) {
+  const sourceWidth = Math.max(0, Number(naturalWidth || animation.sourceSheetPixelWidth || 0));
+  const sourceHeight = Math.max(0, Number(naturalHeight || animation.sourceSheetPixelHeight || 0));
+  const crop = animationSheetCrop(animation);
+  const { columns, rows } = animationGrid(animation);
+  if (!(sourceWidth > 0) || !(sourceHeight > 0)) {
+    return { sourceWidth, sourceHeight, crop, croppedWidth: 0, croppedHeight: 0, frameWidth: 0, frameHeight: 0, columns, rows };
+  }
+  const left = Math.min(crop.left, Math.max(0, sourceWidth - 1));
+  const right = Math.min(crop.right, Math.max(0, sourceWidth - left - 1));
+  const top = Math.min(crop.top, Math.max(0, sourceHeight - 1));
+  const bottom = Math.min(crop.bottom, Math.max(0, sourceHeight - top - 1));
+  const croppedWidth = Math.max(1, sourceWidth - left - right);
+  const croppedHeight = Math.max(1, sourceHeight - top - bottom);
   return {
-    x: Number(base.x || 0) + left,
-    y: Number(base.y || 0) + top,
-    width: maxWidth - left - right,
-    height: maxHeight - top - bottom,
-    empty: false
+    sourceWidth,
+    sourceHeight,
+    crop: { top, right, bottom, left },
+    croppedWidth,
+    croppedHeight,
+    frameWidth: croppedWidth / columns,
+    frameHeight: croppedHeight / rows,
+    columns,
+    rows
   };
 }
 
-export function intersectNormalizedBounds(a, b) {
-  if (!a || a.empty) return b || null;
-  if (!b || b.empty) return a || null;
-  const x1 = Math.max(Number(a.x || 0), Number(b.x || 0));
-  const y1 = Math.max(Number(a.y || 0), Number(b.y || 0));
-  const x2 = Math.min(Number(a.x || 0) + Number(a.width || 0), Number(b.x || 0) + Number(b.width || 0));
-  const y2 = Math.min(Number(a.y || 0) + Number(a.height || 0), Number(b.y || 0) + Number(b.height || 0));
-  if (x2 <= x1 || y2 <= y1) return { x: x1, y: y1, width: 0.001, height: 0.001, empty: false };
-  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1, empty: false };
-}
-
-export function effectiveAnimationContentBounds(animation = {}, frameWidth = 0, frameHeight = 0) {
-  // detectedContentBounds is the raw alpha union. Manual pixel trim is then
-  // applied INSIDE that visible box, which makes the controls predictable:
-  // Left 10 always removes ten painted-content pixels from the left edge.
+export function effectiveAnimationContentBounds(animation = {}) {
   const detected = animation.detectedContentBounds && !animation.detectedContentBounds.empty
     ? animation.detectedContentBounds
     : (animation.contentBounds && !animation.contentBounds.empty ? animation.contentBounds : { x: 0, y: 0, width: 1, height: 1, empty: false });
-  return trimBoundsForFrame(animation, frameWidth, frameHeight, detected);
+  return detected;
 }
 
 export function normalizeAnimation(name, animation = {}) {
@@ -120,12 +109,17 @@ export function normalizeAnimation(name, animation = {}) {
     contentPixelHeight: Math.max(0, Number(animation.contentPixelHeight || 0)),
     framePixelWidth: Math.max(0, Number(animation.framePixelWidth || 0)),
     framePixelHeight: Math.max(0, Number(animation.framePixelHeight || 0)),
-    trimPixels: animationTrimPixels(animation),
+    sheetCropPixels: animationSheetCrop(animation),
+    sourceSheetPixelWidth: Math.max(0, Number(animation.sourceSheetPixelWidth || 0)),
+    sourceSheetPixelHeight: Math.max(0, Number(animation.sourceSheetPixelHeight || 0)),
+    croppedSheetPixelWidth: Math.max(0, Number(animation.croppedSheetPixelWidth || 0)),
+    croppedSheetPixelHeight: Math.max(0, Number(animation.croppedSheetPixelHeight || 0)),
     // Kept for backwards-compatible files. Scene object feet are authoritative
     // at runtime; these values no longer move the actor's world anchor.
     anchorX: Number.isFinite(Number(animation.anchorX)) ? Number(animation.anchorX) : 0.5,
     anchorY: Number.isFinite(Number(animation.anchorY)) ? Number(animation.anchorY) : 1,
-    allowHorizontalFlip: animation.allowHorizontalFlip ?? true
+    allowHorizontalFlip: animation.allowHorizontalFlip ?? true,
+    sourceFacing: animation.sourceFacing ? normalizeHorizontalFacing(animation.sourceFacing) : ''
   };
 }
 
@@ -175,7 +169,8 @@ function sourceDirectionFromName(name = '') {
   const compact = compactName(name);
   if (compact.endsWith('left')) return 'left';
   if (compact.endsWith('right')) return 'right';
-  // Generic strips are authored facing right and mirrored for left.
+  // Generic strips are authored facing right and mirrored for left unless
+  // the animation explicitly declares a different source orientation.
   return 'right';
 }
 
@@ -232,7 +227,8 @@ export function requestedAnimationForVerb(character, verb) {
 export function shouldMirror(animation, facing = 'right', animationName = '') {
   if (!animation?.allowHorizontalFlip) return false;
   const desired = normalizeHorizontalFacing(facing);
-  return sourceDirectionFromName(animationName) !== desired;
+  const authored = animation?.sourceFacing ? normalizeHorizontalFacing(animation.sourceFacing) : sourceDirectionFromName(animationName);
+  return authored !== desired;
 }
 
 export function characterAnimationAssetKey(characterId, animationName) {
@@ -240,11 +236,12 @@ export function characterAnimationAssetKey(characterId, animationName) {
 }
 
 export function animationFrameAspectRatio(animation, naturalWidth, naturalHeight) {
+  const geometry = animationSheetGeometry(animation, naturalWidth, naturalHeight);
   const { columns, rows } = animationGrid(animation);
-  const frameWidth = Number(animation?.frameWidth || animation?.framePixelWidth || 0) || (Number(naturalWidth || 0) / columns);
-  const frameHeight = Number(animation?.frameHeight || animation?.framePixelHeight || 0) || (Number(naturalHeight || 0) / rows);
+  const frameWidth = Number(animation?.frameWidth || animation?.framePixelWidth || 0) || geometry.frameWidth || (Number(naturalWidth || 0) / columns);
+  const frameHeight = Number(animation?.frameHeight || animation?.framePixelHeight || 0) || geometry.frameHeight || (Number(naturalHeight || 0) / rows);
   if (!(frameWidth > 0) || !(frameHeight > 0)) return 0;
-  const b = effectiveAnimationContentBounds(animation, frameWidth, frameHeight);
+  const b = effectiveAnimationContentBounds(animation);
   return (frameWidth * Number(b.width || 1)) / Math.max(1, frameHeight * Number(b.height || 1));
 }
 
@@ -252,7 +249,7 @@ export function animationContentAspectRatio(animation) {
   const fw = Number(animation?.framePixelWidth || animation?.frameWidth || 0);
   const fh = Number(animation?.framePixelHeight || animation?.frameHeight || 0);
   if (fw > 0 && fh > 0) {
-    const b = effectiveAnimationContentBounds(animation, fw, fh);
+    const b = effectiveAnimationContentBounds(animation);
     return (fw * Number(b.width || 1)) / Math.max(1, fh * Number(b.height || 1));
   }
   const w = Number(animation?.contentPixelWidth || 0);

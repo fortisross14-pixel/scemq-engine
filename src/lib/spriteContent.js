@@ -1,4 +1,4 @@
-import { animationGrid, effectiveAnimationContentBounds } from './animation.js';
+import { animationGrid, animationSheetGeometry, effectiveAnimationContentBounds } from './animation.js';
 import { alphaBoundsFromImageData } from './hotspot.js';
 
 export function unionFrameContentBounds(frameBounds = []) {
@@ -38,30 +38,39 @@ export async function analyzeSpriteSheetContent(url, animation = {}, threshold =
   const naturalWidth = img.naturalWidth || img.width;
   const naturalHeight = img.naturalHeight || img.height;
   const { columns, rows } = animationGrid(animation);
-  const frameWidth = Math.floor(naturalWidth / columns);
-  const frameHeight = Math.floor(naturalHeight / rows);
-  if (!(frameWidth > 0) || !(frameHeight > 0)) throw new Error('Invalid sprite sheet frame size');
+  const geometry = animationSheetGeometry(animation, naturalWidth, naturalHeight);
+  const sourceFrameWidth = geometry.frameWidth;
+  const sourceFrameHeight = geometry.frameHeight;
+  if (!(sourceFrameWidth > 0) || !(sourceFrameHeight > 0)) throw new Error('Invalid sprite sheet frame size after sheet crop');
 
+  const canvasWidth = Math.max(1, Math.round(sourceFrameWidth));
+  const canvasHeight = Math.max(1, Math.round(sourceFrameHeight));
   const canvas = document.createElement('canvas');
-  canvas.width = frameWidth;
-  canvas.height = frameHeight;
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const bounds = [];
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < columns; col += 1) {
-      ctx.clearRect(0, 0, frameWidth, frameHeight);
-      ctx.drawImage(img, col * frameWidth, row * frameHeight, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
-      bounds.push(alphaBoundsFromImageData(ctx.getImageData(0, 0, frameWidth, frameHeight), threshold, 0));
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      const sx = geometry.crop.left + col * sourceFrameWidth;
+      const sy = geometry.crop.top + row * sourceFrameHeight;
+      ctx.drawImage(img, sx, sy, sourceFrameWidth, sourceFrameHeight, 0, 0, canvasWidth, canvasHeight);
+      bounds.push(alphaBoundsFromImageData(ctx.getImageData(0, 0, canvasWidth, canvasHeight), threshold, 0));
     }
   }
   const detectedContentBounds = unionFrameContentBounds(bounds);
-  const contentBounds = effectiveAnimationContentBounds({ ...animation, detectedContentBounds, contentBounds: detectedContentBounds, framePixelWidth: frameWidth, framePixelHeight: frameHeight }, frameWidth, frameHeight);
-  const metrics = contentMetricsForFrame(frameWidth, frameHeight, contentBounds);
+  const contentBounds = effectiveAnimationContentBounds({ ...animation, detectedContentBounds, contentBounds: detectedContentBounds });
+  const metrics = contentMetricsForFrame(sourceFrameWidth, sourceFrameHeight, contentBounds);
   return {
     detectedContentBounds,
     contentBounds,
-    framePixelWidth: frameWidth,
-    framePixelHeight: frameHeight,
+    sourceSheetPixelWidth: naturalWidth,
+    sourceSheetPixelHeight: naturalHeight,
+    croppedSheetPixelWidth: geometry.croppedWidth,
+    croppedSheetPixelHeight: geometry.croppedHeight,
+    framePixelWidth: sourceFrameWidth,
+    framePixelHeight: sourceFrameHeight,
     contentPixelWidth: metrics.contentPixelWidth,
     contentPixelHeight: metrics.contentPixelHeight,
     contentAspectRatio: metrics.aspectRatio

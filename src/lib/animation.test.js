@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { animationDurationMs, animationGrid, frameIndexAtTime, horizontalFacingFromDelta, horizontalFacingToward, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from './animation.js';
+import { animationDurationMs, animationGrid, animationSheetGeometry, frameIndexAtTime, horizontalFacingFromDelta, horizontalFacingToward, normalizeCharacterAnimationData, requestedAnimationForVerb, resolveAnimation, shouldMirror } from './animation.js';
 
 test('frame animation timing loops and clamps',()=>{
  const a={frames:4,fps:10,loop:true};
@@ -87,17 +87,39 @@ test('visible content aspect ratio ignores transparent frame padding',()=>{
   assert.ok(Math.abs(a.contentPixelWidth/a.contentPixelHeight-(256/819.2))<1e-9);
 });
 
-test('manual animation trim removes pixels from detected visible bounds', async()=>{
-  const { effectiveAnimationContentBounds } = await import('./animation.js');
-  const a={framePixelWidth:200,framePixelHeight:400,detectedContentBounds:{x:.1,y:.1,width:.8,height:.8},trimPixels:{top:20,bottom:40,left:10,right:30}};
-  const b=effectiveAnimationContentBounds(a,200,400);
-  assert.ok(Math.abs(b.x-.15)<1e-9);
-  assert.ok(Math.abs(b.y-.15)<1e-9);
-  assert.ok(Math.abs(b.width-.6)<1e-9);
-  assert.ok(Math.abs(b.height-.65)<1e-9);
+test('global sheet crop is applied before the animation grid',()=>{
+  const g=animationSheetGeometry({columns:6,rows:2,sheetCropPixels:{left:60,right:60,top:0,bottom:0}},600,240);
+  assert.equal(g.croppedWidth,480);
+  assert.equal(g.croppedHeight,240);
+  assert.equal(g.frameWidth,80);
+  assert.equal(g.frameHeight,120);
+  assert.deepEqual(g.crop,{top:0,right:60,bottom:0,left:60});
 });
 
-test('animation normalization preserves four-sided pixel trim',()=>{
-  const c=normalizeCharacterAnimationData({animations:{idle:{src:'idle.png',columns:6,rows:2,trimPixels:{top:4,right:8,bottom:12,left:16}}}});
-  assert.deepEqual(c.animations.idle.trimPixels,{top:4,right:8,bottom:12,left:16});
+test('top and bottom crop change the whole sheet height, not every frame independently',()=>{
+  const g=animationSheetGeometry({columns:6,rows:2,sheetCropPixels:{top:60,bottom:60,left:0,right:0}},600,240);
+  assert.equal(g.croppedWidth,600);
+  assert.equal(g.croppedHeight,120);
+  assert.equal(g.frameWidth,100);
+  assert.equal(g.frameHeight,60);
+});
+
+test('animation normalization preserves whole-sheet crop',()=>{
+  const c=normalizeCharacterAnimationData({animations:{idle:{src:'idle.png',columns:6,rows:2,sheetCropPixels:{top:4,right:8,bottom:12,left:16}}}});
+  assert.deepEqual(c.animations.idle.sheetCropPixels,{top:4,right:8,bottom:12,left:16});
+});
+
+
+test('sourceFacing can invert mirroring when art is authored facing left',()=>{
+  const c=normalizeCharacterAnimationData({animations:{walk:{src:'walk.png',frames:6,allowHorizontalFlip:true,sourceFacing:'left'}}});
+  const resolved=resolveAnimation(c,'walk','left');
+  assert.equal(shouldMirror(resolved.animation,'left',resolved.name),false);
+  assert.equal(shouldMirror(resolved.animation,'right',resolved.name),true);
+});
+
+test('named left/right suffix still works when sourceFacing is absent',()=>{
+  const c=normalizeCharacterAnimationData({animations:{'walk-left':{src:'walk.png',frames:6,allowHorizontalFlip:true}}});
+  const resolved=resolveAnimation(c,'walk','left');
+  assert.equal(resolved.name,'walk-left');
+  assert.equal(shouldMirror(resolved.animation,'left',resolved.name),false);
 });
