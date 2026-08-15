@@ -14,7 +14,7 @@ function VolumeRow({ label, value, onChange }) {
   );
 }
 
-export default function SettingsEditor({ settings, scenes, strings, onChange, onImport, onExport }) {
+export default function SettingsEditor({ settings, scenes, strings, assetUrls = {}, onChooseActionSound, onClearActionSound, onChange, onImport, onExport }) {
   const titleScenes = scenes.filter((s) => s.sceneType === 'title' || s.id === 'scene0');
   const gameplayScenes = scenes.filter((s) => !(s.sceneType === 'title' || s.id === 'scene0'));
   const languages = strings?.languages || [];
@@ -81,6 +81,17 @@ export default function SettingsEditor({ settings, scenes, strings, onChange, on
         <VolumeRow label="Ambient" value={settings.ambientVolume} onChange={(v) => patch({ ambientVolume: v })} />
         <VolumeRow label="Sound effects" value={settings.sfxVolume} onChange={(v) => patch({ sfxVolume: v })} />
         <div className="linked-note">Music keeps playing across a scene change when both scenes use the same track, and crossfades when they do not.</div>
+        <div className="inspector-divider" />
+        <div className="section-heading-row"><span className="inspector-subtitle">Default action sound effects</span></div>
+        <div className="linked-note">These are reusable project-level sound effects. SCEMQ plays them automatically when the player performs the matching verb. Good defaults are Pick up, Use, and Open.</div>
+        <div className="audio-default-grid">
+          {['pickUp','use','open','close','talk','give','look','push','pull'].map((verb) => {
+            const path = settings.defaultActionSounds?.[verb] || '';
+            const label = verb === 'pickUp' ? 'Pick up' : verb[0].toUpperCase() + verb.slice(1);
+            return <div className="audio-row audio-default-row" key={verb}><span>{label}</span><code>{path || '—'}</code><div className="toolbar-group"><button onClick={() => onChooseActionSound?.(verb)}>Choose</button>{path ? <button className="icon-button" onClick={() => onClearActionSound?.(verb)}>×</button> : null}</div></div>;
+          })}
+        </div>
+        <div className="linked-note">Files are stored once in the project audio folder and can be reused across every scene. Scene-specific sounds for scripted moments still belong in Visual Config → Scene audio.</div>
 
         <div className="inspector-divider" />
         <div className="inspector-subtitle">Saves</div>

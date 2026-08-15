@@ -66,6 +66,7 @@ async function ensureProjectModules(root, manifest) {
   await ensureDirectory(root, ['assets', 'ui']);
   await ensureDirectory(root, ['assets', 'characters']);
   await ensureDirectory(root, ['assets', 'inventory']);
+  await ensureDirectory(root, ['assets', 'audio']);
 
   if (!(await exists(projectDir, 'project.ui.json'))) await writeJson(projectDir, 'project.ui.json', createProjectUi());
   if (!(await exists(projectDir, 'project.variables.json'))) await writeJson(projectDir, 'project.variables.json', createProjectVariables());
@@ -105,7 +106,9 @@ export async function loadProjectBundle(root, manifest) {
   const { projectDir, charactersDir, inventoryDir } = await ensureProjectModules(root, manifest);
   const ui = await readJson(projectDir, 'project.ui.json');
   const variables = await readJson(projectDir, 'project.variables.json');
-  const settings = { ...createProjectSettings(manifest.name), ...(await readJson(projectDir, 'project.settings.json')) };
+  const rawSettings = await readJson(projectDir, 'project.settings.json');
+  const defaults = createProjectSettings(manifest.name);
+  const settings = { ...defaults, ...rawSettings, defaultActionSounds: { ...(defaults.defaultActionSounds || {}), ...(rawSettings.defaultActionSounds || {}) } };
   const sceneManager = normalizeSceneManager(await readJson(projectDir, 'project.scene-manager.json'), manifest.scenes || []);
   // The string table is authored data, never generated on load: a project with no
   // translations simply carries an empty table and the runtime falls back to source text.
@@ -119,7 +122,7 @@ export async function loadProjectBundle(root, manifest) {
     interactions: { ...Object.fromEntries(INVENTORY_VERBS.map((verb) => [verb, true])), ...(item.interactions || {}) },
     combinations: (item.combinations || []).map(combo => ({ ...combo, bidirectional: combo.bidirectional ?? true }))
   }));
-  const assetUrls = { ui: {}, characters: {}, inventory: {} };
+  const assetUrls = { ui: {}, characters: {}, inventory: {}, audio: {} };
 
   for (const character of characters) {
     for (const [slot, path] of Object.entries(character.assets || {})) {
@@ -134,6 +137,10 @@ export async function loadProjectBundle(root, manifest) {
   for (const item of inventory) {
     if (!item.asset) continue;
     try { assetUrls.inventory[item.id] = await readProjectAssetUrl(root, 'inventory', item.asset); } catch {}
+  }
+  for (const path of Object.values(settings.defaultActionSounds || {})) {
+    if (!path) continue;
+    try { assetUrls.audio[path] = await readProjectAssetUrl(root, 'audio', path); } catch {}
   }
   for (const element of ui.elements || []) {
     if (!element.asset) continue;
@@ -262,7 +269,7 @@ export async function loadSceneBundle(root, sceneRef) {
   const assetsDir = await ensureDirectory(sceneDir, ['assets']);
 
   const rawMeta = await readJson(sceneDir, `scene.meta.${sceneId}.json`);
-  const meta = { ...rawMeta, sceneType: rawMeta.sceneType || 'gameplay' };
+  const meta = { ...rawMeta, sceneType: rawMeta.sceneType || 'gameplay', audio: { music: '', ambient: '', sfx: [], ...(rawMeta.audio || {}) } };
   const visual = migrateVisual(await readJson(sceneDir, `scene.visual.${sceneId}.json`));
   const logic = await readJson(sceneDir, `scene.logic.${sceneId}.json`);
   const scannedObjects = (await scanJsonDirectory(objectsDir, `.object.${sceneId}.json`)).map(migrateObject);
@@ -286,6 +293,13 @@ export async function loadSceneBundle(root, sceneRef) {
     try {
       const fileHandle = await assetsDir.getFileHandle(path);
       assetUrls[`__${slot}`] = URL.createObjectURL(await fileHandle.getFile());
+    } catch {}
+  }
+  for (const path of (meta.audio?.sfx || [])) {
+    if (!path) continue;
+    try {
+      const fileHandle = await assetsDir.getFileHandle(path);
+      assetUrls[`__sfx:${path}`] = URL.createObjectURL(await fileHandle.getFile());
     } catch {}
   }
 
@@ -419,6 +433,7 @@ export async function embedScenePackageAssets(root, sceneRef, pkg) {
   const sceneAssets = await ensureDirectory(sceneDir, ['assets']);
   await push(sceneAssets, pkg.scene?.visual?.background?.path, 'scene');
   for (const slot of ['music', 'ambient']) await push(sceneAssets, pkg.scene?.meta?.audio?.[slot], 'scene');
+  for (const path of (pkg.scene?.meta?.audio?.sfx || [])) await push(sceneAssets, path, 'scene');
   for (const object of pkg.scene?.objects || []) {
     await push(sceneAssets, object.asset?.path, 'scene');
     for (const path of Object.values(object.asset?.states || {})) await push(sceneAssets, path, 'scene');

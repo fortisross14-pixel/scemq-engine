@@ -498,7 +498,15 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   function objectVisible(obj){const base=runtime.objectVisibility[`${sceneRef.id}:${obj.id}`] ?? obj.transform.visible;if(!base)return false;if(obj.type==='exit'&&obj.exit?.hiddenUntilAvailable&&!exitAvailable(obj))return false;return true}
   function objectLabel(obj){return translate(stringKey.objectLabel(sceneRef.id,obj.id),obj.hotspot?.label||obj.name)}
   function interactionLabel(obj,verb){const item=selectedItem?projectData.inventory.find(i=>i.id===selectedItem)?.name:'';const target=objectLabel(obj);if(item&&verb==='use')return `Use ${item} with ${target}`;if(item&&verb==='give')return `Give ${item} to ${target}`;const v=verb==='pickUp'?'Pick up':verb[0].toUpperCase()+verb.slice(1);return `${v} ${target}`}
-  function inventoryInteractionLabel(itemId){const item=projectData.inventory.find(i=>i.id===itemId);const name=item?.name||itemId;if(selectedVerb==='use'&&selectedItem&&selectedItem!==itemId){const first=projectData.inventory.find(i=>i.id===selectedItem)?.name||selectedItem;return `Use ${first} with ${name}`}if(selectedVerb==='give'&&selectedItem===itemId)return `Give ${name} to…`;const verb=selectedVerb==='pickUp'?'Pick up':selectedVerb[0]?.toUpperCase()+selectedVerb.slice(1);return `${verb||'Use'} ${name}`}
+  
+  function playDefaultActionSound(verb){
+    const path=settings.defaultActionSounds?.[verb];
+    if(!path)return;
+    const url=projectData.assetUrls.audio?.[path];
+    if(url)audioRef.current.playSound(url);
+  }
+
+function inventoryInteractionLabel(itemId){const item=projectData.inventory.find(i=>i.id===itemId);const name=item?.name||itemId;if(selectedVerb==='use'&&selectedItem&&selectedItem!==itemId){const first=projectData.inventory.find(i=>i.id===selectedItem)?.name||selectedItem;return `Use ${first} with ${name}`}if(selectedVerb==='give'&&selectedItem===itemId)return `Give ${name} to…`;const verb=selectedVerb==='pickUp'?'Pick up':selectedVerb[0]?.toUpperCase()+selectedVerb.slice(1);return `${verb||'Use'} ${name}`}
   function inventoryFallback(item,verb){if(verb==='look'&&item?.description?.trim())return item.description.trim();return fallbackResponse(settings,verb,item?.name||'that')}
 
   function walkTo(point, action=null){
@@ -555,6 +563,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     clickObject(e,obj,settings.rightClickVerb||'look');
   }
   async function performInteraction(obj,verb,itemIdOverride=''){
+    if(obj.type!=='exit'&&verb!=='walk')playDefaultActionSound(verb);
     if(obj.type!=='exit')await playVerbAnimation(verb);
     if(obj.type==='exit'&&verb==='walk'&&obj.exit?.destinationSceneId){
       if(!exitAvailable(obj)){sayLine(obj.exit?.blockedMessage||'You cannot go there yet.',playerDefinition?.id||'',{await:false});return}
@@ -603,6 +612,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     if(verb==='use'){if(selectedItem&&selectedItem!==itemId){await combineInventoryItems(selectedItem,itemId);return}setSelectedItem(selectedItem===itemId?'':itemId);if(selectedItem!==itemId)setHoverText(`Use ${item.name} with…`);return}
     if(verb==='give'){setSelectedItem(selectedItem===itemId?'':itemId);if(selectedItem!==itemId)setHoverText(`Give ${item.name} to…`);return}
     setSelectedItem('');
+    playDefaultActionSound(verb);
     await playVerbAnimation(verb);
     const eventType=inventoryEventTypeForVerb(verb);
     if(!eventType){sayLine(inventoryFallback(item,verb),playerDefinition?.id||'',{await:false});return}
@@ -614,7 +624,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     if(firstId===secondId){setSelectedItem('');return}
     const combineRules=(bundleRef.current?.logic.rules||[]).filter(r=>r.event?.type==='onInventoryCombine');
     const matching=combineRules.find(r=>inventoryRuleMatches(r,firstId,secondId)&&rulePass(r,bundleRef.current));
-    if(matching){await runActions(matching.actions,bundleRef.current,{ruleId:matching.id,sayIndex:0});setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');return}
+    if(matching){playDefaultActionSound('use');await runActions(matching.actions,bundleRef.current,{ruleId:matching.id,sayIndex:0});setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');return}
     const match=findInventoryRecipe(projectData.inventory,firstId,secondId);
     if(!match?.recipe?.resultItemId){sayLine('Those items do not combine.',playerDefinition?.id||'',{await:false});setSelectedItem(secondId);return}
     const {recipe,owner,other}=match;

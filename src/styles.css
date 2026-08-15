@@ -531,3 +531,6 @@ textarea { resize: vertical; }
 .scene-variable-editor.standalone .scene-variable-row { grid-template-columns: minmax(220px, 1.5fr) minmax(120px, .6fr) minmax(160px, .8fr) 32px; gap: 8px; }
 .scene-variable-editor.standalone .scene-variable-row input,
 .scene-variable-editor.standalone .scene-variable-row select { font-size: 11px; padding: 8px; }
+
+.audio-default-grid{display:grid;grid-template-columns:1fr;gap:8px;}
+.audio-default-row{align-items:center;}

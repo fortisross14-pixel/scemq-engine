@@ -77,6 +77,9 @@ export function createProjectSettings(name = 'Untitled Project') {
     musicVolume: 0.6,
     ambientVolume: 0.5,
     sfxVolume: 0.9,
+    defaultActionSounds: {
+      look: '', use: '', talk: '', pickUp: '', give: '', open: '', close: '', push: '', pull: ''
+    },
     language: '',
     defaultResponses: createDefaultResponses()
   };
@@ -178,7 +181,7 @@ export function createSceneManifest(sceneId, name = 'Untitled Scene', sceneType 
     name,
     sceneType,
     notes: '',
-    audio: { music: '', ambient: '' },
+    audio: { music: '', ambient: '', sfx: [] },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
