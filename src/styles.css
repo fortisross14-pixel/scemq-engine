@@ -541,3 +541,12 @@ textarea { resize: vertical; }
 .ui-skin-label,.runtime-ui-skin-label{position:relative;z-index:1;}
 .runtime-ui-element>span{position:relative;z-index:1;}
 .settings-cursor-row{align-items:center;}
+
+/* v0.7.6 reliable custom cursors + transparent GUI skins */
+.runtime-viewport.custom-cursor-active,
+.runtime-viewport.custom-cursor-active * { cursor:none !important; }
+.runtime-custom-cursor{position:absolute;pointer-events:none;z-index:20000;transform:translate(0,0);max-width:none;max-height:none;user-select:none;}
+.runtime-gui-background,.ui-bottom-skin-preview{position:absolute;overflow:hidden;pointer-events:none;z-index:1;}
+.runtime-gui-background img,.ui-bottom-skin-preview img{width:100%;height:100%;display:block;}
+.runtime-ui-element.has-skin{background:transparent!important;border:0!important;box-shadow:none!important;outline:none!important;}
+.ui-element-preview.has-skin:not(.selected){background:transparent!important;border:0!important;box-shadow:none!important;}
