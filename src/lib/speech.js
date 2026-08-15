@@ -10,6 +10,30 @@ export function speechDurationMs(text, settings = {}) {
   return Math.max(MIN_SPEECH_MS, Math.min(MAX_SPEECH_MS, raw));
 }
 
+
+function normalizedSpeakerKey(value = '') { return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''); }
+
+export function resolveSpeechSpeakerId(speakerId = '', characters = [], objects = [], text = '') {
+  const raw = String(speakerId || '');
+  if (raw && (characters || []).some(character => character.id === raw)) return raw;
+  if (raw) {
+    const object = (objects || []).find(candidate => candidate.id === raw && candidate.type === 'character');
+    if (object?.character?.characterId) return object.character.characterId;
+  }
+  // Older/generated rule actions sometimes encode the speaker as a readable
+  // prefix ("Mr. Pindle: ...") while leaving targetId empty. Resolve that
+  // prefix only for colour/anchor/talk-animation purposes; the authored text is
+  // left untouched so existing scene copy does not change during migration.
+  const prefix = normalizedSpeakerKey(String(text || '').match(/^\s*([^:]{1,80})\s*:/)?.[1] || '');
+  if (prefix) {
+    const character = (characters || []).find(candidate => [candidate.id, candidate.name].filter(Boolean).some(value => normalizedSpeakerKey(value) === prefix));
+    if (character) return character.id;
+    const object = (objects || []).find(candidate => candidate.type === 'character' && [candidate.id, candidate.name, candidate.hotspot?.label].filter(Boolean).some(value => normalizedSpeakerKey(value) === prefix));
+    if (object?.character?.characterId) return object.character.characterId;
+  }
+  return raw;
+}
+
 export function speechColorFor(character, settings = {}) {
   return character?.textColor || settings.textDefaultColor || DEFAULT_TEXT_COLOR;
 }

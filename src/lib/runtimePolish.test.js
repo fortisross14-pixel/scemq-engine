@@ -7,9 +7,12 @@ const runtimeUrl = new URL('../components/RuntimePlayer.jsx', import.meta.url);
 test('pending interactions preserve the requested action until walking completes', async () => {
   const source = await readFile(runtimeUrl, 'utf8');
   assert.match(source, /pendingActionRef\s*=\s*useRef/);
-  assert.match(source, /rememberPendingAction\(\{\.\.\.action[\s\S]*itemId:/);
+  assert.match(source, /const committed=\{\.\.\.action[\s\S]*itemId:/);
+  assert.match(source, /rememberPendingAction\(committed\)/);
   assert.match(source, /const action=pendingActionRef\.current/);
-  assert.match(source, /performInteraction\(obj,action\.verb,action\.itemId/);
+  assert.match(source, /await performInteraction\(obj,action\.verb,action\.itemId/);
+  assert.match(source, /interactionBusyRef\s*=\s*useRef/);
+  assert.match(source, /setInteractionBusyState\(true\)/);
 });
 
 test('dialogue speech is rendered in viewport space rather than inside the scrolling world', async () => {
@@ -22,11 +25,26 @@ test('dialogue is modal and scene clicks advance dialogue instead of gameplay', 
   const source = await readFile(runtimeUrl, 'utf8');
   assert.match(source, /runtime-dialogue-lock/);
   assert.match(source, /if\(dialogue\)\{if\(!dialogue\.awaitingChoice\)advanceDialogueBeat\(\);return\}/);
-  assert.match(source, /if\(dialogue\)return;if\(!inputEnabled/);
+  assert.match(source, /if\(dialogue\|\|interactionBusyRef\.current\)return/);
 });
 
 test('dialogue choices stop click propagation so selecting one cannot move the player', async () => {
   const source = await readFile(runtimeUrl, 'utf8');
   assert.match(source, /onClick=\{e=>\{e\.stopPropagation\(\);chooseDialogueChoice\(c\)\}\}/);
   assert.match(source, /dialogue\?\.awaitingChoice/);
+});
+
+
+test('committed interactions block extra player input until execution finishes', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /interactionBusyRef\.current/);
+  assert.match(source, /finally\{[\s\S]*clearPendingAction\(\);[\s\S]*setInteractionBusyState\(false\)/);
+  assert.doesNotMatch(source, /const action=pendingActionRef\.current;\s*clearPendingAction\(\);\s*if\(action\)performPendingInteraction/);
+});
+
+
+test('a previous speech bubble does not consume a new object interaction click', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /function clickObject[\s\S]*dismissSpeech\(\);[\s\S]*const verb=overrideVerb\|\|selectedVerb/);
+  assert.doesNotMatch(source, /function clickObject[\s\S]{0,300}if\(dismissSpeech\(\)\)return/);
 });

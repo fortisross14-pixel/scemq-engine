@@ -70,6 +70,7 @@ export function createProjectSettings(name = 'Untitled Project') {
     textDefaultColor: DEFAULT_TEXT_COLOR,
     floatingSpeech: true,
     rightClickVerb: 'look',
+    cursorRoles: { normal: '', interactive: '', exit: '' },
     keyboardShortcuts: true,
     autosaveOnSceneChange: true,
     sharedInventory: true,
@@ -89,7 +90,7 @@ export function createProjectUi() {
   return {
     schemaVersion: SCHEMA_VERSION,
     kind: 'scemq-project-ui',
-    screen: { width: 1280, height: 900, backgroundColor: '#111318' },
+    screen: { width: 1280, height: 900, backgroundColor: '#111318', asset: '', assetFit: 'stretch' },
     viewport: { x: 0, y: 0, width: 1280, height: 700 },
     cursors: Object.fromEntries(VERBS.map((verb) => [verb, ''])),
     elements: [

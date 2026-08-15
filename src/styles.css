@@ -534,3 +534,10 @@ textarea { resize: vertical; }
 
 .audio-default-grid{display:grid;grid-template-columns:1fr;gap:8px;}
 .audio-default-row{align-items:center;}
+
+/* v0.7.4 interface skinning */
+.ui-element-preview,.runtime-ui-element{overflow:hidden;}
+.ui-skin-image,.runtime-ui-skin-image{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;}
+.ui-skin-label,.runtime-ui-skin-label{position:relative;z-index:1;}
+.runtime-ui-element>span{position:relative;z-index:1;}
+.settings-cursor-row{align-items:center;}

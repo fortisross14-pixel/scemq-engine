@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_TEXT_COLOR, MAX_SPEECH_MS, MIN_SPEECH_MS, speechAnchorForActor, speechColorFor, speechDurationMs, speechScreenPosition } from './speech.js';
+import { DEFAULT_TEXT_COLOR, MAX_SPEECH_MS, MIN_SPEECH_MS, speechAnchorForActor, speechColorFor, speechDurationMs, speechScreenPosition, resolveSpeechSpeakerId } from './speech.js';
 
 test('a line is held roughly as long as it takes to read', () => {
   const short = speechDurationMs('Hi.');
@@ -34,4 +34,13 @@ test('speech is clamped inside the viewport so it cannot be cut off', () => {
   const right = speechScreenPosition({ x: 5000, y: 5000 }, { x: 0, y: 0 }, 1, { width: 1280, height: 720 });
   assert.ok(left.x > 0 && left.y > 0);
   assert.ok(right.x < 1280 && right.y < 720);
+});
+
+
+test('rule speech can resolve a scene character object id to the character definition id',()=>{
+  const characters=[{id:'madame-brine',textColor:'#12ab34'}];
+  const objects=[{id:'brine-stall-character',type:'character',character:{characterId:'madame-brine'}}];
+  assert.equal(resolveSpeechSpeakerId('brine-stall-character',characters,objects),'madame-brine');
+  assert.equal(resolveSpeechSpeakerId('madame-brine',characters,objects),'madame-brine');
+  assert.equal(resolveSpeechSpeakerId('',characters,objects,'Madame Brine: Hands off the sardine.'),'madame-brine');
 });

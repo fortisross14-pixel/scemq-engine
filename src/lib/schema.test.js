@@ -115,3 +115,15 @@ test('character scene objects carry an editable speech point', () => {
   assert.equal(object.speechAnchor.x, 0.5);
   assert.ok(object.speechAnchor.y <= 0);
 });
+
+
+test('project settings expose three semantic cursor roles', () => {
+  const settings = createProjectSettings('Test');
+  assert.deepEqual(settings.cursorRoles, { normal: '', interactive: '', exit: '' });
+});
+
+test('project UI screen supports an optional skin image', () => {
+  const ui = createProjectUi();
+  assert.equal(ui.screen.asset, '');
+  assert.equal(ui.screen.assetFit, 'stretch');
+});

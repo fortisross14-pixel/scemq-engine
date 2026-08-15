@@ -108,7 +108,7 @@ export async function loadProjectBundle(root, manifest) {
   const variables = await readJson(projectDir, 'project.variables.json');
   const rawSettings = await readJson(projectDir, 'project.settings.json');
   const defaults = createProjectSettings(manifest.name);
-  const settings = { ...defaults, ...rawSettings, defaultActionSounds: { ...(defaults.defaultActionSounds || {}), ...(rawSettings.defaultActionSounds || {}) } };
+  const settings = { ...defaults, ...rawSettings, cursorRoles: { ...(defaults.cursorRoles || {}), ...(rawSettings.cursorRoles || {}) }, defaultActionSounds: { ...(defaults.defaultActionSounds || {}), ...(rawSettings.defaultActionSounds || {}) } };
   const sceneManager = normalizeSceneManager(await readJson(projectDir, 'project.scene-manager.json'), manifest.scenes || []);
   // The string table is authored data, never generated on load: a project with no
   // translations simply carries an empty table and the runtime falls back to source text.
@@ -145,6 +145,13 @@ export async function loadProjectBundle(root, manifest) {
   for (const element of ui.elements || []) {
     if (!element.asset) continue;
     try { assetUrls.ui[element.id] = await readProjectAssetUrl(root, 'ui', element.asset); } catch {}
+  }
+  if (ui.screen?.asset) {
+    try { assetUrls.ui.__screenBackground = await readProjectAssetUrl(root, 'ui', ui.screen.asset); } catch {}
+  }
+  for (const [role, path] of Object.entries(settings.cursorRoles || {})) {
+    if (!path) continue;
+    try { assetUrls.ui[`cursorRole:${role}`] = await readProjectAssetUrl(root, 'ui', path); } catch {}
   }
   for (const [verb, path] of Object.entries(ui.cursors || {})) {
     if (!path) continue;

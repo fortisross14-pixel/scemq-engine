@@ -14,7 +14,7 @@ function VolumeRow({ label, value, onChange }) {
   );
 }
 
-export default function SettingsEditor({ settings, scenes, strings, assetUrls = {}, onChooseActionSound, onClearActionSound, onChange, onImport, onExport }) {
+export default function SettingsEditor({ settings, scenes, strings, assetUrls = {}, cursorAssetUrls = {}, onChooseCursorRole, onClearCursorRole, onChooseActionSound, onClearActionSound, onChange, onImport, onExport }) {
   const titleScenes = scenes.filter((s) => s.sceneType === 'title' || s.id === 'scene0');
   const gameplayScenes = scenes.filter((s) => !(s.sceneType === 'title' || s.id === 'scene0'));
   const languages = strings?.languages || [];
@@ -60,6 +60,14 @@ export default function SettingsEditor({ settings, scenes, strings, assetUrls = 
         <label className="checkbox-row"><input type="checkbox" checked={settings.keyboardShortcuts !== false} onChange={(e) => patch({ keyboardShortcuts: e.target.checked })} /> Keyboard verb shortcuts (W L U T P G O C S Y)</label>
         <label className="checkbox-row"><input type="checkbox" checked={settings.showStatusLine !== false} onChange={(e) => patch({ showStatusLine: e.target.checked })} /> Show the interaction status line</label>
         <div className="linked-note">Right-click fires the chosen verb straight away, the way a LucasArts player expects Look to work without a trip to the verb bar.</div>
+        <div className="inspector-divider" />
+        <div className="inspector-subtitle">Mouse cursors</div>
+        <div className="linked-note">SCEMQ automatically swaps between these three cursor roles while the player moves around the scene. PNG images with transparency work best; keep them small so the pointer remains precise.</div>
+        {[['normal','Normal / Walk'],['interactive','Interactive object'],['exit','Exit']].map(([role,label]) => {
+          const path = settings.cursorRoles?.[role] || '';
+          return <div className="cursor-row settings-cursor-row" key={role}><span>{label}</span><code>{path || 'browser default'}</code><div className="toolbar-group"><button onClick={() => onChooseCursorRole?.(role)}>Choose</button>{path ? <button className="icon-button" onClick={() => onClearCursorRole?.(role)}>×</button> : null}</div></div>;
+        })}
+        <div className="linked-note">Normal / Walk is used over empty scene space. Interactive is used over ordinary hotspots and characters. Exit is used over exit hotspots.</div>
 
         <div className="inspector-divider" />
         <div className="inspector-subtitle">Speech</div>

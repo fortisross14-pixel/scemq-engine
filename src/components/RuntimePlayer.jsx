@@ -4,7 +4,7 @@ import { actorScaleAtPoint, scaledRenderBox } from '../lib/scale.js';
 import { findInventoryRecipe, inventoryEventTypeForVerb, inventoryRuleMatches, inventoryVerbEnabled } from '../lib/inventory.js';
 import { advanceDialogueRuntimeState, createDialogueRuntimeState, moveDialogueRuntimeToNode, resolveDialogueStartNode } from '../lib/dialogue.js';
 import { alphaHit, hotspotRect, runtimeObjectHasVisual } from '../lib/hotspot.js';
-import { speechAnchorForActor, speechColorFor, speechDurationMs, speechScreenPosition } from '../lib/speech.js';
+import { resolveSpeechSpeakerId, speechAnchorForActor, speechColorFor, speechDurationMs, speechScreenPosition } from '../lib/speech.js';
 import { fallbackResponse } from '../lib/responses.js';
 import { authoredRulesForInteraction, eventTypeForVerb, ruleEventMatches } from '../lib/interaction.js';
 import { delay, parseDurationMs, parsePoint } from '../lib/cutscene.js';
@@ -54,6 +54,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const [bundle, setBundle] = useState(null);
   const [runtime, setRuntime] = useState(() => initialRuntimeState(projectData));
   const [selectedVerb, setSelectedVerb] = useState(settings.defaultVerb || 'walk');
+  const [hoverCursorRole,setHoverCursorRole]=useState('normal');
   const [selectedItem, setSelectedItem] = useState('');
   const [hoverText, setHoverText] = useState('');
   const [speech, setSpeech] = useState([]);
@@ -69,6 +70,8 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const [movingActors, setMovingActors] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
   const pendingActionRef = useRef(null);
+  const [interactionBusy, setInteractionBusy] = useState(false);
+  const interactionBusyRef = useRef(false);
   const [animationOverrides, setAnimationOverrides] = useState({});
   const [savePanel, setSavePanel] = useState('');
   const [interactionWarning, setInteractionWarning] = useState('');
@@ -98,6 +101,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   useEffect(()=>{inputEnabledRef.current=inputEnabled},[inputEnabled]);
   function rememberPendingAction(action){pendingActionRef.current=action;setPendingAction(action)}
   function clearPendingAction(){pendingActionRef.current=null;setPendingAction(null)}
+  function setInteractionBusyState(value){interactionBusyRef.current=!!value;setInteractionBusy(!!value)}
 
   if(!audioRef.current) audioRef.current=new AudioEngine();
   useEffect(()=>{audioRef.current.setVolumes(settings)},[settings.musicVolume,settings.ambientVolume,settings.sfxVolume,settings.masterVolume]);
@@ -135,16 +139,22 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     setInteractionWarning(message);
     interactionWarningTimerRef.current=setTimeout(()=>setInteractionWarning(''),3600);
   }
-  function performPendingInteraction(action){
+  async function performPendingInteraction(action){
     const obj=objectById(action?.objectId) || action?.object;
-    if(!obj)return;
+    if(!obj){clearPendingAction();setInteractionBusyState(false);return false}
     const mode=obj?.interactionPoint?.facingMode||'auto';
     const explicit=obj?.interactionPoint?.facing;
     const actor=actorPositionsRef.current[playerId]||{x:0,y:0};
     const targetX=interactionTargetX(obj);
     const nextFacing=mode==='manual'&&['left','right'].includes(explicit)?explicit:horizontalFacingToward(actor.x,targetX,actorFacing[playerId]||'right');
     setActorFacing(f=>({...f,[playerId]:nextFacing}));
-    setTimeout(()=>performInteraction(obj,action.verb,action.itemId||''),0);
+    try{
+      await performInteraction(obj,action.verb,action.itemId||'');
+      return true;
+    }finally{
+      clearPendingAction();
+      setInteractionBusyState(false);
+    }
   }
 
   function effectiveCharacterTransform(obj){
@@ -184,11 +194,12 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   function sayLine(text,speakerId='',{await:shouldAwait=true}={}){
     const line=String(text??'');
     if(!line.trim())return Promise.resolve(false);
-    const character=projectData.characters.find(c=>c.id===speakerId);
+    const resolvedSpeakerId=resolveSpeechSpeakerId(speakerId,projectData.characters,bundleRef.current?.objects||[],line);
+    const character=projectData.characters.find(c=>c.id===resolvedSpeakerId);
     const id=`speech-${++speechCounterRef.current}`;
     const duration=speechDurationMs(line,settings);
-    const bubble={id,text:line,speakerId,color:speechColorFor(character,settings)};
-    setSpeech(current=>[...current.filter(s=>s.speakerId!==speakerId||!speakerId),bubble]);
+    const bubble={id,text:line,speakerId:resolvedSpeakerId,color:speechColorFor(character,settings)};
+    setSpeech(current=>[...current.filter(s=>s.speakerId!==resolvedSpeakerId||!resolvedSpeakerId),bubble]);
     const finish=()=>{setSpeech(current=>current.filter(s=>s.id!==id));const resolve=speechResolversRef.current.get(id);if(resolve){speechResolversRef.current.delete(id);resolve(true)}};
     const timer=setTimeout(finish,duration);
     speechResolversRef.current.set(id,()=>clearTimeout(timer));
@@ -242,8 +253,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         if(resolve){npcMoveResolversRef.current.delete(objectId);resolve(true)}
         if(objectId===playerId){
           const action=pendingActionRef.current;
-          clearPendingAction();
-          if(action)performPendingInteraction(action);
+          if(action)void performPendingInteraction(action);
         }
       }
       rafRef.current=requestAnimationFrame(frame);
@@ -269,6 +279,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
 
   // --- scene lifecycle ------------------------------------------------------
   async function enterScene(ref, spawnPointId = null, { autosave = true } = {}) {
+    clearPendingAction();
     const loaded = await loadScene(ref);
     if (!runtimeRef.current.sceneVariables?.[ref.id]) {
       const localDefaults = Object.fromEntries((loaded.logic.variables || []).map(v => [v.id, v.initialValue]));
@@ -321,7 +332,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
       if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
       if(e.key==='Escape'){if(savePanel){setSavePanel('');return}dismissSpeech();return}
       if(e.key===' '){if(dismissSpeech())e.preventDefault();return}
-      if(settings.keyboardShortcuts===false||!inputEnabledRef.current)return;
+      if(settings.keyboardShortcuts===false||!inputEnabledRef.current||interactionBusyRef.current)return;
       const verb=VERB_KEYS[e.key.toLowerCase()];
       if(verb){e.preventDefault();setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}
     }
@@ -521,18 +532,20 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       const approach=resolveInteractionApproach(safeStart,point,bundle.visual.walkAreas||[],reach);
       if(!approach.reachable){
         clearPendingAction();
+        setInteractionBusyState(false);
         setMovingActors(c=>{const n={...c};delete n[playerId];return n});
         showInteractionWarning(action.object);
         return false;
       }
       clearInteractionWarning();
+      const committed={...action,objectId:action.object?.id||action.objectId||'',itemId:action.itemId??selectedItem};
+      rememberPendingAction(committed);
+      setInteractionBusyState(true);
       if(approach.immediate){
-        clearPendingAction();
         setMovingActors(c=>{const n={...c};delete n[playerId];return n});
-        performPendingInteraction(action);
+        void performPendingInteraction(committed);
         return true;
       }
-      rememberPendingAction({...action,objectId:action.object?.id||action.objectId||'',itemId:action.itemId??selectedItem});
       moveActorAlongPath(playerId,approach.path,walkSpeed);
       return true;
     }
@@ -541,6 +554,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
     if(!path.length){clearPendingAction();setMovingActors(c=>{const n={...c};delete n[playerId];return n});sayLine(fallbackResponse(settings,'walk','there'),playerDefinition?.id||'',{await:false});return false}
     clearInteractionWarning();
     clearPendingAction();
+    setInteractionBusyState(false);
     moveActorAlongPath(playerId,path,walkSpeed);
     return true;
   }
@@ -548,9 +562,12 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
     const rect=e.currentTarget.getBoundingClientRect();const zoom=Math.max(.25,Math.min(3,Number(bundle.visual.viewport?.zoom)||1));
     return{x:((e.clientX-rect.left)*(ui.viewport.width/rect.width))/zoom+camera.x,y:((e.clientY-rect.top)*(ui.viewport.height/rect.height))/zoom+camera.y};
   }
-  function clickWorld(e){if(!bundle||!inputEnabled)return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}if(dismissSpeech())return;setSelectedVerb(settings.defaultVerb||'walk');setSelectedItem('');walkTo(worldPointFromEvent(e))}
+  function clickWorld(e){if(!bundle||!inputEnabled||interactionBusyRef.current)return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}if(dismissSpeech())return;setSelectedVerb(settings.defaultVerb||'walk');setSelectedItem('');walkTo(worldPointFromEvent(e))}
   function clickObject(e,obj,overrideVerb=null){
-    e.stopPropagation();if(!inputEnabled)return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}if(dismissSpeech())return;
+    e.stopPropagation();if(!inputEnabled||interactionBusyRef.current)return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}
+    // A previous incidental remark must never eat a deliberate hotspot click.
+    // Dismiss it, but continue with the newly requested interaction in this same click.
+    dismissSpeech();
     const verb=overrideVerb||selectedVerb;
     const point=obj.interactionPoint||{x:obj.transform.x+obj.transform.width/2,y:obj.transform.y+obj.transform.height};
     if(verb==='walk'&&obj.type!=='exit'){walkTo(point);return}
@@ -558,7 +575,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
   }
   function contextObject(e,obj){
     e.preventDefault();
-    if(dialogue)return;
+    if(dialogue||interactionBusyRef.current)return;
     if(settings.rightClickVerb==='none')return;
     clickObject(e,obj,settings.rightClickVerb||'look');
   }
@@ -604,7 +621,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
   }
 
   async function interactWithInventoryItem(itemId){
-    if(dialogue)return;
+    if(dialogue||interactionBusyRef.current)return;
     const item=projectData.inventory.find(i=>i.id===itemId);if(!item||!inputEnabled)return;
     const verb=selectedVerb||settings.defaultVerb||'walk';
     if(verb==='walk'){setSelectedItem(itemId);setSelectedVerb('use');setHoverText(`Use ${item.name} with…`);return}
@@ -634,7 +651,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
     sayLine(`Created ${result?.name||recipe.resultItemId}.`,playerDefinition?.id||'',{await:false});setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');
   }
 
-  function uiAction(el){if(dialogue)return;if(!inputEnabled&&!['pause','openSave','openLoad'].includes(el.action?.type))return;const a=el.action||{};if(a.type==='selectVerb'){const verb=a.value||'walk';setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}if(a.type==='openSave')setSavePanel('save');if(a.type==='openLoad')setSavePanel('load');if(a.type==='toggleHotspots')setRuntimePatch(s=>({...s,showHotspots:!s.showHotspots}));if(a.type==='pause')setPaused(v=>!v);if(a.type==='customRule'&&a.value)executeRule(a.value)}
+  function uiAction(el){if(dialogue||interactionBusyRef.current)return;if(!inputEnabled&&!['pause','openSave','openLoad'].includes(el.action?.type))return;const a=el.action||{};if(a.type==='selectVerb'){const verb=a.value||'walk';setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}if(a.type==='openSave')setSavePanel('save');if(a.type==='openLoad')setSavePanel('load');if(a.type==='toggleHotspots')setRuntimePatch(s=>({...s,showHotspots:!s.showHotspots}));if(a.type==='pause')setPaused(v=>!v);if(a.type==='customRule'&&a.value)executeRule(a.value)}
 
   async function startNewGame(){
     const fresh=initialRuntimeState(projectData);runtimeRef.current=fresh;setRuntime(fresh);setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');setSpeech([]);
@@ -711,8 +728,21 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
     setDialogue(current=>advanceDialogueRuntimeState(current,dNode,visibleChoiceCount));
   }
 
-  return <div className="runtime-overlay" style={{background:settings.runtimeBackground||'#08090b'}}><div className="runtime-topbar"><strong>PLAY MODE</strong><span>{sceneRef.name}</span><button onClick={onClose}>Exit play</button></div><div className="runtime-fit"><div className="runtime-screen" style={{width:ui.screen.width,height:ui.screen.height,background:ui.screen.backgroundColor}}>
-    <div className={`runtime-viewport ${inputEnabled&&!dialogue?'':'input-locked'} ${dialogue?'dialogue-locked':''}`} style={{left:ui.viewport.x,top:ui.viewport.y,width:ui.viewport.width,height:ui.viewport.height,cursor:projectData.assetUrls.ui?.[`cursor:${selectedVerb}`]?`url(${projectData.assetUrls.ui[`cursor:${selectedVerb}`]}), auto`:undefined}} onClick={clickWorld} onContextMenu={e=>{e.preventDefault();if(!inputEnabled||dialogue)return;if(dismissSpeech())return;const verb=settings.rightClickVerb||'look';setSelectedVerb(verb);setSelectedItem('')}}>
+  function runtimeCursorUrl(){
+    const role=hoverCursorRole||'normal';
+    const configured=settings.cursorRoles?.[role];
+    const roleUrl=configured?projectData.assetUrls.ui?.[`cursorRole:${role}`]:'';
+    if(roleUrl)return roleUrl;
+    // Backwards compatibility with the older per-verb cursor system.
+    return projectData.assetUrls.ui?.[`cursor:${selectedVerb}`]||'';
+  }
+  function uiScreenStyle(){
+    const url=ui.screen?.asset?projectData.assetUrls.ui?.__screenBackground:'';
+    return {width:ui.screen.width,height:ui.screen.height,backgroundColor:ui.screen.backgroundColor,backgroundImage:url?`url(${url})`:undefined,backgroundSize:ui.screen.assetFit==='cover'?'cover':ui.screen.assetFit==='contain'?'contain':'100% 100%',backgroundPosition:'center',backgroundRepeat:'no-repeat'};
+  }
+
+  return <div className="runtime-overlay" style={{background:settings.runtimeBackground||'#08090b'}}><div className="runtime-topbar"><strong>PLAY MODE</strong><span>{sceneRef.name}</span><button onClick={onClose}>Exit play</button></div><div className="runtime-fit"><div className="runtime-screen" style={uiScreenStyle()}>
+    <div className={`runtime-viewport ${inputEnabled&&!dialogue&&!interactionBusy?'':'input-locked'} ${dialogue?'dialogue-locked':''} ${interactionBusy?'interaction-committed':''}`} style={{left:ui.viewport.x,top:ui.viewport.y,width:ui.viewport.width,height:ui.viewport.height,cursor:runtimeCursorUrl()?`url(${runtimeCursorUrl()}), auto`:undefined}} onMouseMove={()=>hoverCursorRole!=='normal'&&setHoverCursorRole('normal')} onClick={clickWorld} onContextMenu={e=>{e.preventDefault();if(!inputEnabled||dialogue||interactionBusyRef.current)return;if(dismissSpeech())return;const verb=settings.rightClickVerb||'look';setSelectedVerb(verb);setSelectedItem('')}}>
       <div className="runtime-world" style={{width:bundle.visual.canvas.width,height:bundle.visual.canvas.height,transformOrigin:'top left',transform:`translate(${-camera.x*runtimeZoom}px, ${-camera.y*runtimeZoom}px) scale(${runtimeZoom})`,backgroundColor:bundle.visual.canvas.backgroundColor}}>
         {bundle.assetUrls.__background&&<img className={`runtime-background fit-${bundle.visual.background.fit||'stretch'}`} src={bundle.assetUrls.__background} alt=""/>}
         {viewportObjects.map(obj=>{
@@ -726,7 +756,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
           const zIndex=isActor?depthZAtPoint(actorPoint,bundle.visual.depthAreas||[],t.z):t.z;
           return <React.Fragment key={obj.id}>
             {runtimeObjectHasVisual(obj,url)&&<div className="runtime-object runtime-visual-object" style={{left:renderLeft,top:renderTop,width:renderWidth,height:renderHeight,zIndex,opacity:t.opacity,transform:!anim&&obj.type==='character'&&staticCharacterFlip(obj)?'scaleX(-1)':(!anim&&t.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(obj.character?.characterId,anim.playKey)}/>:url?<img src={url} alt="" draggable="false" onLoad={e=>obj.hotspot?.shape==='alpha'&&cacheAlphaMask(url,e.currentTarget)}/>:<div className="runtime-placeholder">{obj.name}</div>}</div>}
-            {obj.hotspot?.enabled&&<div className={`runtime-hotspot-target clickable shape-${obj.hotspot?.shape||'visual'} ${runtime.showHotspots?'debug':''}`} style={{left:isActor?renderLeft:hr.x,top:isActor?renderTop:hr.y,width:isActor?renderWidth:hr.width,height:isActor?renderHeight:hr.height,zIndex}} onMouseMove={e=>{const hit=alphaHotspotHit(e,obj,url);e.currentTarget.style.cursor=hit?'pointer':'default';setHoverText(hit?interactionLabel(obj,selectedVerb):'')}} onMouseLeave={()=>setHoverText('')} onContextMenu={e=>contextObject(e,obj)} onClick={e=>{if(alphaHotspotHit(e,obj,url))clickObject(e,obj)}}>{runtime.showHotspots?<span>{objectLabel(obj)}</span>:null}</div>}
+            {obj.hotspot?.enabled&&<div className={`runtime-hotspot-target clickable shape-${obj.hotspot?.shape||'visual'} ${runtime.showHotspots?'debug':''}`} style={{left:isActor?renderLeft:hr.x,top:isActor?renderTop:hr.y,width:isActor?renderWidth:hr.width,height:isActor?renderHeight:hr.height,zIndex}} onMouseMove={e=>{e.stopPropagation();const hit=alphaHotspotHit(e,obj,url);setHoverCursorRole(hit?(obj.type==='exit'?'exit':'interactive'):'normal');setHoverText(hit?interactionLabel(obj,selectedVerb):'')}} onMouseLeave={()=>{setHoverCursorRole('normal');setHoverText('')}} onContextMenu={e=>contextObject(e,obj)} onClick={e=>{if(alphaHotspotHit(e,obj,url))clickObject(e,obj)}}>{runtime.showHotspots?<span>{objectLabel(obj)}</span>:null}</div>}
           </React.Fragment>})}
         {playerObject&&(()=>{const anim=resolveCharacterRender(playerObject,true);const box=anim?scaledRenderBox(playerPos,playerT,playerScale):playerBox;const staticUrl=staticCharacterAsset(playerObject,true);return <div className="runtime-object runtime-player" style={{left:box.left,top:box.top,width:box.width,height:box.height,zIndex:playerZ,opacity:playerT.opacity,transform:!anim&&staticCharacterFlip(playerObject)?'scaleX(-1)':(!anim&&playerT.flipX?'scaleX(-1)':'none')}}>{anim?<SpriteStrip src={anim.url} animation={anim.animation} playKey={anim.playKey} flipX={anim.flipX} onComplete={()=>completeCharacterAnimation(playerDefinition?.id,anim.playKey)}/>:staticUrl?<img src={staticUrl} alt="" draggable="false"/>:<div className="runtime-placeholder">{playerObject.name}</div>}</div>})()}
       </div>
@@ -736,11 +766,11 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       {settings.floatingSpeech!==false&&dNode&&dialogue?.awaitingChoice&&<div className="runtime-dialogue runtime-dialogue-choice-only runtime-dialogue-choice-in-viewport" onClick={e=>e.stopPropagation()}><div className="runtime-dialogue-choices">{(dNode.choices||[]).filter(choiceVisible).map(c=><button key={c.id} onClick={e=>{e.stopPropagation();chooseDialogueChoice(c)}}>{translate(stringKey.dialogueChoice(sceneRef.id,dialogue.data.characterId,dNode.id,c.id),c.text)}</button>)}</div></div>}
       {fade>0&&<div className="runtime-fade" style={{opacity:fade}}/>}
     </div>
-    {(ui.elements||[]).sort((a,b)=>a.transform.z-b.transform.z).map(el=>{const t=el.transform;const active=el.action?.type==='selectVerb'&&el.action.value===selectedVerb;return <div key={el.id} className={`runtime-ui-element runtime-ui-${el.type} ${active?'active':''} ${inputEnabled&&!dialogue?'':'dimmed'}`} style={{left:t.x,top:t.y,width:t.width,height:t.height,zIndex:t.z,background:el.style?.background,color:el.style?.color,fontSize:el.style?.fontSize}} onClick={()=>uiAction(el)}>
-      {el.type==='statusText'?<span>{hoverText||(settings.floatingSpeech===false&&speech[0]?.text)||selectedVerb}</span>:null}
+    {(ui.elements||[]).sort((a,b)=>a.transform.z-b.transform.z).map(el=>{const t=el.transform;const active=el.action?.type==='selectVerb'&&el.action.value===selectedVerb;return <div key={el.id} className={`runtime-ui-element runtime-ui-${el.type} ${active?'active':''} ${inputEnabled&&!dialogue&&!interactionBusy?'':'dimmed'}`} style={{left:t.x,top:t.y,width:t.width,height:t.height,zIndex:t.z,background:el.style?.background,color:el.style?.color,fontSize:el.style?.fontSize}} onClick={()=>uiAction(el)}>
+      {el.asset&&projectData.assetUrls.ui?.[el.id]&&['verbButton','button','panel'].includes(el.type)?<img className="runtime-ui-skin-image" src={projectData.assetUrls.ui[el.id]} alt="" style={{objectFit:el.assetFit==='cover'?'cover':el.assetFit==='contain'?'contain':'fill'}}/>:null}{el.type==='statusText'?<span>{hoverText||(settings.floatingSpeech===false&&speech[0]?.text)||selectedVerb}</span>:null}
       {el.type==='inventory'?<div className={`runtime-inventory direction-${el.inventory?.direction||'horizontal'}`} style={{gridTemplateColumns:`repeat(${el.inventory?.columns||3}, ${el.inventory?.slotWidth||96}px)`,gridAutoRows:`${el.inventory?.slotHeight||54}px`}}>{runtime.inventory.map(id=>{const item=projectData.inventory.find(i=>i.id===id);return <button style={{width:el.inventory?.slotWidth||96,height:el.inventory?.slotHeight||54}} title={item?.description||''} className={selectedItem===id?'active':''} key={id} onMouseEnter={()=>setHoverText(inventoryInteractionLabel(id))} onMouseLeave={()=>setHoverText('')} onClick={(e)=>{e.stopPropagation();interactWithInventoryItem(id)}}>{projectData.assetUrls.inventory?.[id]?<img src={projectData.assetUrls.inventory[id]} alt=""/>:<span>{item?.name||id}</span>}</button>})}</div>:null}
       {el.type==='image'&&projectData.assetUrls.ui?.[el.id]?<img src={projectData.assetUrls.ui[el.id]} alt=""/>:null}
-      {!['statusText','inventory','image','panel'].includes(el.type)?<span>{el.label||el.name}</span>:null}
+      {!['statusText','inventory','image','panel'].includes(el.type)&&el.style?.showLabel!==false?<span className="runtime-ui-skin-label">{el.label||el.name}</span>:null}
     </div>})}
     {pickupQueue.length>0&&<div className="runtime-pickup-backdrop" onClick={()=>setPickupQueue(q=>q.slice(1))}><div className="runtime-pickup-card" onClick={e=>{e.stopPropagation();setPickupQueue(q=>q.slice(1))}}><strong>{pickupQueue[0].text}</strong><span>Click to continue</span></div></div>}
     {settings.floatingSpeech===false&&dNode&&dialogue&&!dialogue.awaitingChoice&&dBeat&&<div className="runtime-dialogue" onClick={e=>{e.stopPropagation();advanceDialogueBeat()}}>{projectData.assetUrls.characters?.[`${dBeat.speakerId}:portrait`]&&<img className="runtime-dialogue-portrait" src={projectData.assetUrls.characters[`${dBeat.speakerId}:portrait`]} alt=""/>}<div className="runtime-dialogue-speaker">{dSpeaker?.name||dBeat.speakerId}</div><div className="runtime-dialogue-line" style={{color:speechColorFor(dSpeaker,settings)}}>{translate(stringKey.dialogueBeat(sceneRef.id,dialogue.data.characterId,dNode.id,dBeat.id),dBeat.text)}</div></div>}
