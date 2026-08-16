@@ -94,3 +94,35 @@ test('scene remap keeps cutscene files scene-scoped',()=>{
  const out=remapScenePackage(pkg,'scene9');
  assert.equal(out.scene.cutscenes.sceneId,'scene9');
 });
+
+test('close-up controls and their bound global variables are portable scene dependencies',()=>{
+ const scene=sampleScene();
+ scene.closeUps={kind:'scemq-scene-closeups',sceneId:'scene1',closeUps:[{id:'panel',name:'Panel',elements:[{id:'digit',type:'numberStepper',variableId:'beaconDigit',number:{min:0,max:9,step:1,wrap:true}},{id:'go',type:'button',action:{type:'playCutscene',targetId:'beam-on'}}]}]};
+ scene.cutscenes={kind:'scemq-scene-cutscenes',sceneId:'scene1',cutscenes:[{id:'beam-on',name:'Beam',video:'beam.mp4',conditions:[]}]};
+ scene.objects[0].hotspot.actions={look:{openCloseUpId:'panel'}};
+ const projectData={characters:[{id:'mara'},{id:'pindle'}],inventory:[{id:'short-ruler',combinations:[]}],variables:{variables:[{id:'globalDay'},{id:'beaconDigit',type:'number',initialValue:0}]}};
+ const pkg=createScenePackage({scene,projectData,project:{scenes:[{id:'scene1'},{id:'scene2'}]}});
+ assert.equal(pkg.scene.closeUps.closeUps[0].id,'panel');
+ assert.equal(pkg.dependencies.variables.some(v=>v.id==='beaconDigit'),true);
+ const report=analyzeScenePackage(pkg,{scenes:[]},{characters:[],inventory:[],variables:{variables:[]}});
+ assert.equal(report.errors.length,0);
+});
+
+test('scene package validation catches missing close-up and cutscene targets',()=>{
+ const scene=sampleScene();
+ scene.closeUps={kind:'scemq-scene-closeups',sceneId:'scene1',closeUps:[]};
+ scene.cutscenes={kind:'scemq-scene-cutscenes',sceneId:'scene1',cutscenes:[]};
+ scene.objects[0].hotspot.actions={use:{openCloseUpId:'missing-panel'}};
+ scene.logic.rules.push({id:'movie',name:'Movie',event:{type:'onEnterScene',targetType:'scene',targetId:'',verb:'',itemId:''},conditions:[],actions:[{type:'playCutscene',targetId:'missing-movie'}]});
+ const pkg={kind:'scemq-scene-package',packageVersion:1,sceneId:'scene1',scene,dependencies:{characters:[{id:'mara'},{id:'pindle'}],inventory:[{id:'short-ruler'}],variables:[{id:'globalDay'}]}};
+ const report=analyzeScenePackage(pkg,{scenes:[]},{characters:[],inventory:[],variables:{variables:[]}});
+ assert.equal(report.errors.some(e=>e.includes('missing-panel')),true);
+ assert.equal(report.errors.some(e=>e.includes('missing-movie')),true);
+});
+
+test('scene remap keeps close-up files scene-scoped',()=>{
+ const scene=sampleScene();scene.closeUps={kind:'scemq-scene-closeups',sceneId:'scene1',closeUps:[]};
+ const pkg={kind:'scemq-scene-package',packageVersion:1,sceneId:'scene1',scene,dependencies:{}};
+ const out=remapScenePackage(pkg,'scene9');
+ assert.equal(out.scene.closeUps.sceneId,'scene9');
+});

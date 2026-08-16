@@ -3,6 +3,7 @@ import {
   createInventoryItem,
   createLogicConfig,
   createCutsceneConfig,
+  createCloseUpConfig,
   createProjectManifest,
   createProjectSettings,
   createProjectUi,
@@ -15,6 +16,7 @@ import { nextSceneId, slugify } from './id.js';
 import { characterAnimationAssetKey, normalizeCharacterAnimationData } from './animation.js';
 import { createSceneManager, normalizeSceneManager } from './sceneManager.js';
 import { createStringTable, STRING_TABLE_KIND } from './localization.js';
+import { normalizeCloseUpConfig } from './closeup.js';
 
 function requireDirectoryPicker() {
   if (!window.showDirectoryPicker) {
@@ -208,11 +210,13 @@ export async function createScene(root, project, sceneName, options = {}) {
   if (sceneType === 'title') { visual.canvas = { ...visual.canvas, width: 1280, height: 900 }; visual.titleScreen = { ...visual.titleScreen, title: project.name || sceneName }; }
   const logic = createLogicConfig(sceneId);
   const cutscenes = createCutsceneConfig(sceneId);
+  const closeUps = createCloseUpConfig(sceneId);
 
   await writeJson(sceneDir, `scene.meta.${sceneId}.json`, meta);
   await writeJson(sceneDir, `scene.visual.${sceneId}.json`, visual);
   await writeJson(sceneDir, `scene.logic.${sceneId}.json`, logic);
   await writeJson(sceneDir, `scene.cutscenes.${sceneId}.json`, cutscenes);
+  await writeJson(sceneDir, `scene.closeups.${sceneId}.json`, closeUps);
 
   const nextProject = { ...project, scenes: [...project.scenes, { id: sceneId, name: sceneName, folder: sceneFolder, sceneType }] };
   return { sceneId, project: await saveProject(root, nextProject) };
@@ -286,6 +290,7 @@ export async function loadSceneBundle(root, sceneRef) {
   const visual = migrateVisual(await readJson(sceneDir, `scene.visual.${sceneId}.json`));
   const logic = await readJson(sceneDir, `scene.logic.${sceneId}.json`);
   const cutscenes = (await exists(sceneDir, `scene.cutscenes.${sceneId}.json`)) ? await readJson(sceneDir, `scene.cutscenes.${sceneId}.json`) : createCutsceneConfig(sceneId);
+  const closeUps = normalizeCloseUpConfig((await exists(sceneDir, `scene.closeups.${sceneId}.json`)) ? await readJson(sceneDir, `scene.closeups.${sceneId}.json`) : createCloseUpConfig(sceneId), sceneId);
   const scannedObjects = (await scanJsonDirectory(objectsDir, `.object.${sceneId}.json`)).map(migrateObject);
   const objectMap = new Map(scannedObjects.map((object) => [object.id, object]));
   const refs = visual.objectRefs?.length ? visual.objectRefs : scannedObjects.map((object) => object.id);
@@ -325,6 +330,16 @@ export async function loadSceneBundle(root, sceneRef) {
     } catch {}
   }
 
+  for (const closeUp of (closeUps.closeUps || [])) {
+    for (const element of (closeUp.elements || [])) {
+      if (!element.asset) continue;
+      try {
+        const fileHandle = await assetsDir.getFileHandle(element.asset);
+        assetUrls[`__closeup:${closeUp.id}:${element.id}`] = URL.createObjectURL(await fileHandle.getFile());
+      } catch {}
+    }
+  }
+
   for (const object of objects) {
     const paths = new Set([object.asset?.path, ...Object.values(object.asset?.states || {})].filter(Boolean));
     for (const path of paths) {
@@ -337,7 +352,7 @@ export async function loadSceneBundle(root, sceneRef) {
     }
   }
 
-  return { meta, visual, logic: { ...logic, schemaVersion: '0.4' }, cutscenes: { ...createCutsceneConfig(sceneId), ...cutscenes, sceneId, cutscenes: cutscenes.cutscenes || [] }, objects, dialogues, assetUrls, stateAssetUrls };
+  return { meta, visual, logic: { ...logic, schemaVersion: '0.4' }, cutscenes: { ...createCutsceneConfig(sceneId), ...cutscenes, sceneId, cutscenes: cutscenes.cutscenes || [] }, closeUps, objects, dialogues, assetUrls, stateAssetUrls };
 }
 
 export async function saveSceneBundle(root, sceneRef, bundle) {
@@ -350,6 +365,7 @@ export async function saveSceneBundle(root, sceneRef, bundle) {
   await writeJson(sceneDir, `scene.visual.${sceneId}.json`, { ...bundle.visual, schemaVersion: '0.4', playerStart: bundle.visual.player?.start || bundle.visual.playerStart });
   await writeJson(sceneDir, `scene.logic.${sceneId}.json`, { ...bundle.logic, schemaVersion: '0.4' });
   await writeJson(sceneDir, `scene.cutscenes.${sceneId}.json`, { ...createCutsceneConfig(sceneId), ...(bundle.cutscenes || {}), sceneId, schemaVersion: '0.4' });
+  await writeJson(sceneDir, `scene.closeups.${sceneId}.json`, { ...createCloseUpConfig(sceneId), ...(bundle.closeUps || {}), sceneId, schemaVersion: '0.4' });
 
   const expectedObjectFiles = new Set();
   for (const object of bundle.objects) {
@@ -463,6 +479,7 @@ export async function embedScenePackageAssets(root, sceneRef, pkg) {
   }
 
   for (const cutscene of pkg.scene?.cutscenes?.cutscenes || []) await push(sceneAssets, cutscene.video, 'scene');
+  for (const closeUp of pkg.scene?.closeUps?.closeUps || []) for (const element of closeUp.elements || []) await push(sceneAssets, element.asset, 'scene');
 
   const characterAssets = await ensureDirectory(root, ['assets', 'characters']);
   for (const character of pkg.dependencies?.characters || []) {

@@ -8,6 +8,7 @@ import { resolveSpeechSpeakerId, speechAnchorForActor, speechColorFor, speechDur
 import { fallbackResponse } from '../lib/responses.js';
 import { authoredRulesForInteraction, eventTypeForVerb, ruleEventMatches } from '../lib/interaction.js';
 import { delay, parseDurationMs, parsePoint } from '../lib/cutscene.js';
+import { cycleBoundValue, stepBoundValue } from '../lib/closeup.js';
 import { AudioEngine } from '../lib/audio.js';
 import { AUTOSAVE_SLOT, createSaveRecord, formatPlaytime, listSaves, readSave, writeSave } from '../lib/saves.js';
 import { createTranslator, key as stringKey } from '../lib/localization.js';
@@ -77,6 +78,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const [animationOverrides, setAnimationOverrides] = useState({});
   const [savePanel, setSavePanel] = useState('');
   const [interactionWarning, setInteractionWarning] = useState('');
+  const [activeCloseUpId, setActiveCloseUpId] = useState('');
   const [activeCutscene, setActiveCutscene] = useState(null);
   const [cutsceneTime, setCutsceneTime] = useState(0);
   const [cutsceneTextIndex, setCutsceneTextIndex] = useState(0);
@@ -365,7 +367,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const centered=player?cameraForPoint(positions[player.id],loaded):null;
     const c=centered||clampCamera({x:loaded.visual.viewport.startX||0,y:loaded.visual.viewport.startY||0},loaded.visual.canvas,viewport,cameraBounds(loaded.visual.viewport,loaded.visual.canvas));
     setCamera(c);setCameraLocked(loaded.visual.viewport.followPlayer===false);
-    setMovingActors({}); clearPendingAction(); setDialogue(null); setHoverText(''); setPickupQueue([]); setSpeech([]);
+    setMovingActors({}); clearPendingAction(); setDialogue(null); setActiveCloseUpId(''); setHoverText(''); setPickupQueue([]); setSpeech([]);
     audioRef.current.play('music',loaded.assetUrls.__music||'');
     audioRef.current.play('ambient',loaded.assetUrls.__ambient||'');
     if(autosave&&settings.autosaveOnSceneChange!==false&&loaded.meta?.sceneType!=='title')setTimeout(()=>writeSaveSlot(AUTOSAVE_SLOT,{silent:true}),0);
@@ -377,26 +379,67 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   // Background rules: onTick fires once a second while the player has control.
   useEffect(()=>{
     const timer=setInterval(()=>{
-      if(paused||!inputEnabledRef.current||!bundleRef.current||cutsceneResolverRef.current)return;
+      const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);
+      if(paused||!inputEnabledRef.current||!bundleRef.current||cutsceneResolverRef.current||(openPanel&&openPanel.pauseWorldInput!==false))return;
       if((bundleRef.current.logic?.rules||[]).some(r=>r.event?.type==='onTick'))runEvent('onTick','',bundleRef.current);
     },1000);
     return ()=>clearInterval(timer);
-  },[paused]);
+  },[paused,activeCloseUpId]);
 
   // Keyboard verb shortcuts + skip.
   useEffect(()=>{
     function onKey(e){
       if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
-      if(e.key==='Escape'){if(activeCutscene?.cutscene?.skippable!==false){if(activeCutscene){finishActiveCutscene({skipped:true});return}}if(savePanel){setSavePanel('');return}dismissSpeech();return}
-      if(e.key===' '){if(dismissSpeech())e.preventDefault();return}
-      if(settings.keyboardShortcuts===false||!inputEnabledRef.current||interactionBusyRef.current)return;
+      if(e.key==='Escape'){if(activeCutscene?.cutscene?.skippable!==false){if(activeCutscene){finishActiveCutscene({skipped:true});return}}const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);if(openPanel&&openPanel.closeOnEscape!==false){setActiveCloseUpId('');return}if(savePanel){setSavePanel('');return}dismissSpeech();return}
+      if(e.key===' '){if(activeCloseUpId)return;if(dismissSpeech())e.preventDefault();return}
+      const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);
+      if(settings.keyboardShortcuts===false||!inputEnabledRef.current||interactionBusyRef.current||(openPanel&&openPanel.pauseWorldInput!==false))return;
       const verb=VERB_KEYS[e.key.toLowerCase()];
       if(verb){e.preventDefault();setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}
     }
     window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
-  },[speech,savePanel,settings.keyboardShortcuts,activeCutscene]);
+  },[speech,savePanel,settings.keyboardShortcuts,activeCutscene,activeCloseUpId]);
 
   function setRuntimePatch(updater){const current=runtimeRef.current;const next=typeof updater==='function'?updater(current):{...current,...updater};runtimeRef.current=next;setRuntime(next);return next}
+  function isGlobalVariable(variableId){return (projectData.variables?.variables||[]).some(v=>v.id===variableId)}
+  function readVariableValue(variableId,activeBundle=bundleRef.current){
+    if(!variableId)return undefined;
+    if(isGlobalVariable(variableId))return runtimeRef.current.variables?.[variableId] ?? (projectData.variables?.variables||[]).find(v=>v.id===variableId)?.initialValue;
+    const sid=activeBundle?.meta?.sceneId||sceneRef.id;
+    return runtimeRef.current.sceneVariables?.[sid]?.[variableId] ?? (activeBundle?.logic?.variables||[]).find(v=>v.id===variableId)?.initialValue;
+  }
+  function writeVariableValue(variableId,value,activeBundle=bundleRef.current,{emit=true}={}){
+    if(!variableId)return;
+    const sid=activeBundle?.meta?.sceneId||sceneRef.id;
+    if(isGlobalVariable(variableId))setRuntimePatch(state=>({...state,variables:{...state.variables,[variableId]:value}}));
+    else setRuntimePatch(state=>({...state,sceneVariables:{...state.sceneVariables,[sid]:{...(state.sceneVariables?.[sid]||{}),[variableId]:value}}}));
+    if(emit)void runEvent('onVariableChanged',variableId,activeBundle,'object');
+  }
+  function openCloseUp(closeUpId,activeBundle=bundleRef.current){
+    const panel=(activeBundle?.closeUps?.closeUps||[]).find(c=>c.id===closeUpId);
+    if(!panel)return false;
+    // A close-up is a screen-space interaction mode, not a world movement state.
+    // Stop any in-progress player walk so Mara is exactly where she was when the
+    // panel opened and cannot continue drifting behind the modal UI.
+    clearPendingAction();
+    if(playerId)completeActorMove(playerId);
+    setInteractionBusyState(false);setHoverText('');setActiveCloseUpId(closeUpId);setHoverCursorRole('gui');return true;
+  }
+  function closeCloseUp(){setActiveCloseUpId('');setHoverCursorRole('normal')}
+  async function activateCloseUpElement(element,activeBundle=bundleRef.current){
+    const action=element?.action||{};
+    if(action.type==='customRule'&&action.value){await executeRule(action.value,activeBundle);return}
+    if(action.type&&action.type!=='none')await runActions([action],activeBundle,{ruleId:`closeup-${element.id}`,sayIndex:0});
+  }
+  function stepCloseUpNumber(element,direction,activeBundle=bundleRef.current){
+    const cfg=element.number||{};const current=Number(readVariableValue(element.variableId,activeBundle)??cfg.min??0);
+    const next=stepBoundValue(current,{amount:(Number(cfg.step)||1)*direction,min:Number(cfg.min??0),max:Number(cfg.max??9),wrap:cfg.wrap!==false});
+    writeVariableValue(element.variableId,next,activeBundle);
+  }
+  function cycleCloseUpToggle(element,activeBundle=bundleRef.current){
+    const values=element.toggle?.values||[];const current=readVariableValue(element.variableId,activeBundle)??values[0];
+    writeVariableValue(element.variableId,cycleBoundValue(current,values),activeBundle);
+  }
   function pickupMessageFor(itemId){const item=projectData.inventory.find(i=>i.id===itemId);return item?.pickupMessage?.trim()||`You picked up ${item?.name||itemId}.`}
   function giveInventoryItem(itemId,{announce=true}={}){if(!itemId)return false;const already=runtimeRef.current.inventory.includes(itemId);if(already)return false;setRuntimePatch(s=>({...s,inventory:[...s.inventory,itemId]}));if(announce)setPickupQueue(q=>[...q,{id:`${itemId}:${Date.now()}:${q.length}`,itemId,text:pickupMessageFor(itemId)}]);return true}
   function exitAvailable(obj,activeBundle=bundleRef.current){const ruleId=obj?.exit?.availabilityRuleId;if(!ruleId)return true;const rule=findRule(ruleId,activeBundle);return !!rule&&rulePass(rule,activeBundle)}
@@ -482,11 +525,19 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         }
         case 'wait': await delay(parseDurationMs(action.value,500)); break;
         case 'setFlag': setRuntimePatch(s=>({...s,flags:{...s.flags,[key]:value}})); break;
-        case 'setVariable':{
-          const sid=activeBundle?.meta?.sceneId||sceneRef.id;const isGlobal=(projectData.variables?.variables||[]).some(v=>v.id===key);
-          if(isGlobal)setRuntimePatch(s=>({...s,variables:{...s.variables,[key]:value}}));
-          else setRuntimePatch(s=>({...s,sceneVariables:{...s.sceneVariables,[sid]:{...(s.sceneVariables?.[sid]||{}),[key]:value}}}));
-          await runEvent('onVariableChanged',key,activeBundle);break;
+        case 'setVariable':{writeVariableValue(key,value,activeBundle,{emit:false});await runEvent('onVariableChanged',key,activeBundle);break}
+        case 'incrementVariable':
+        case 'decrementVariable':{
+          const direction=action.type==='decrementVariable'?-1:1;const current=Number(readVariableValue(key,activeBundle)??0);
+          const next=stepBoundValue(current,{amount:(Number(action.amount)||1)*direction,min:Number(action.min??0),max:Number(action.max??9),wrap:!!action.wrap});
+          writeVariableValue(key,next,activeBundle,{emit:false});await runEvent('onVariableChanged',key,activeBundle);break;
+        }
+        case 'openCloseUp': openCloseUp(key||String(value||''),activeBundle); break;
+        case 'closeCloseUp': closeCloseUp(); break;
+        case 'playCutscene':{
+          const cutscene=(activeBundle?.cutscenes?.cutscenes||[]).find(c=>c.id===(key||String(value||'')));
+          if(cutscene){const played=runtimeRef.current.playedCutscenes?.[cutsceneKey(cutscene,activeBundle)];if(cutscene.once===false||!played)await playVideoCutscene(cutscene,activeBundle)}
+          break;
         }
         case 'giveItem': giveInventoryItem(key||value); break;
         case 'removeItem': setRuntimePatch(s=>({...s,inventory:s.inventory.filter(id=>id!==(key||value))})); break;
@@ -680,9 +731,9 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
     const rect=e.currentTarget.getBoundingClientRect();const zoom=Math.max(.25,Math.min(3,Number(bundle.visual.viewport?.zoom)||1));
     return{x:((e.clientX-rect.left)*(ui.viewport.width/rect.width))/zoom+camera.x,y:((e.clientY-rect.top)*(ui.viewport.height/rect.height))/zoom+camera.y};
   }
-  function clickWorld(e){if(!bundle||!inputEnabled||interactionBusyRef.current)return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}if(dismissSpeech())return;setSelectedVerb(settings.defaultVerb||'walk');setSelectedItem('');walkTo(worldPointFromEvent(e))}
+  function clickWorld(e){const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);if(!bundle||!inputEnabled||interactionBusyRef.current||(openPanel&&openPanel.pauseWorldInput!==false))return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}if(dismissSpeech())return;setSelectedVerb(settings.defaultVerb||'walk');setSelectedItem('');walkTo(worldPointFromEvent(e))}
   function clickObject(e,obj,overrideVerb=null){
-    e.stopPropagation();if(!inputEnabled||interactionBusyRef.current)return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}
+    e.stopPropagation();const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);if(!inputEnabled||interactionBusyRef.current||(openPanel&&openPanel.pauseWorldInput!==false))return;if(dialogue){if(!dialogue.awaitingChoice)advanceDialogueBeat();return}
     // A previous incidental remark must never eat a deliberate hotspot click.
     // Dismiss it, but continue with the newly requested interaction in this same click.
     dismissSpeech();
@@ -718,6 +769,10 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       sayLine(localized,playerDefinition?.id||'',{await:false});
       return;
     }
+    if(binding?.openCloseUpId){
+      if(openCloseUp(binding.openCloseUpId,bundleRef.current))return;
+      showInteractionWarning(obj,`Close-up “${binding.openCloseUpId}” is missing for ${objectLabel(obj)}.`);return;
+    }
     let explicitHandled=false;
     if(binding?.ruleId){
       const result=await executeRule(binding.ruleId,bundleRef.current,{itemId:itemIdOverride||selectedItem});
@@ -745,7 +800,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
   }
 
   async function interactWithInventoryItem(itemId){
-    if(dialogue||interactionBusyRef.current)return;
+    const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);if(dialogue||interactionBusyRef.current||(openPanel&&openPanel.pauseWorldInput!==false))return;
     const item=projectData.inventory.find(i=>i.id===itemId);if(!item||!inputEnabled)return;
     const verb=selectedVerb||settings.defaultVerb||'walk';
     if(verb==='walk'){setSelectedItem(itemId);setSelectedVerb('use');setHoverText(`Use ${item.name} with…`);return}
@@ -775,7 +830,7 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
     sayLine(`Created ${result?.name||recipe.resultItemId}.`,playerDefinition?.id||'',{await:false});setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');
   }
 
-  function uiAction(el){if(dialogue||interactionBusyRef.current)return;if(!inputEnabled&&!['pause','openSave','openLoad'].includes(el.action?.type))return;const a=el.action||{};if(a.type==='selectVerb'){const verb=a.value||'walk';setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}if(a.type==='openSave')setSavePanel('save');if(a.type==='openLoad')setSavePanel('load');if(a.type==='toggleHotspots')setRuntimePatch(s=>({...s,showHotspots:!s.showHotspots}));if(a.type==='pause')setPaused(v=>!v);if(a.type==='customRule'&&a.value)executeRule(a.value)}
+  function uiAction(el){const openPanel=(bundleRef.current?.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId);if(dialogue||interactionBusyRef.current||(openPanel&&openPanel.pauseWorldInput!==false))return;if(!inputEnabled&&!['pause','openSave','openLoad'].includes(el.action?.type))return;const a=el.action||{};if(a.type==='selectVerb'){const verb=a.value||'walk';setSelectedVerb(verb);if(!['use','give'].includes(verb))setSelectedItem('')}if(a.type==='openSave')setSavePanel('save');if(a.type==='openLoad')setSavePanel('load');if(a.type==='toggleHotspots')setRuntimePatch(s=>({...s,showHotspots:!s.showHotspots}));if(a.type==='pause')setPaused(v=>!v);if(a.type==='customRule'&&a.value)executeRule(a.value)}
 
   async function startNewGame(){
     const fresh=initialRuntimeState(projectData);runtimeRef.current=fresh;setRuntime(fresh);setSelectedItem('');setSelectedVerb(settings.defaultVerb||'walk');setSpeech([]);
@@ -881,6 +936,44 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
   const activeCutsceneSubtitle=activeCutscene?.phase==='video'?activeCutscene?.cutscene?.subtitles?.find(subtitle=>cutsceneTime>=Number(subtitle.start||0)&&cutsceneTime<=Number(subtitle.end||0)):null;
   const activeCutsceneText=activeCutscene&&['before','after'].includes(activeCutscene.phase)?((activeCutscene.phase==='before'?activeCutscene.cutscene.beforeText:activeCutscene.cutscene.afterText)||[])[cutsceneTextIndex]:null;
   const activeCutsceneSpeaker=activeCutsceneText?.speakerId==='narrator'?null:projectData.characters.find(c=>c.id===activeCutsceneText?.speakerId);
+  const activeCloseUp=(bundle.closeUps?.closeUps||[]).find(c=>c.id===activeCloseUpId)||null;
+
+  function closeUpPanelStyle(panel){
+    const t=panel?.transform||{};
+    const centered=(panel?.position||'center')==='center';
+    return {
+      left:centered?'50%':Number(t.x||0),
+      top:centered?'50%':Number(t.y||0),
+      width:Math.max(80,Number(t.width)||850),
+      height:Math.max(80,Number(t.height)||430),
+      transform:centered?'translate(-50%, -50%)':'none',
+      background:panel?.style?.background||'#171a20',
+      color:panel?.style?.color||'#f4f0e4',
+      borderColor:panel?.style?.borderColor||'#625b4e',
+      borderRadius:Number(panel?.style?.borderRadius??16)
+    };
+  }
+  function closeUpElementStyle(element){
+    const t=element?.transform||{};
+    return {left:Number(t.x||0),top:Number(t.y||0),width:Math.max(1,Number(t.width)||80),height:Math.max(1,Number(t.height)||40),zIndex:Number(t.z||20),fontSize:Number(element?.style?.fontSize)||18,color:element?.style?.color||'#f4f0e4',background:element?.style?.background||'transparent'};
+  }
+  function renderCloseUpElement(element){
+    const assetUrl=bundle.assetUrls?.[`__closeup:${activeCloseUp?.id}:${element.id}`];
+    if(element.type==='image')return assetUrl?<img className="runtime-closeup-image" src={assetUrl} alt="" draggable="false" style={{objectFit:element.assetFit==='cover'?'cover':element.assetFit==='stretch'?'fill':'contain'}}/>:null;
+    if(element.type==='text')return <div className="runtime-closeup-text">{element.label||''}</div>;
+    if(element.type==='numberStepper'){
+      const cfg=element.number||{};const value=readVariableValue(element.variableId,bundle);const shown=String(value??cfg.min??0).padStart(Math.max(0,Number(cfg.pad)||0),'0');
+      return <div className="runtime-closeup-number"><button type="button" aria-label={`Increase ${element.name||element.variableId||'value'}`} onClick={e=>{e.stopPropagation();stepCloseUpNumber(element,1,bundle)}}>▲</button><strong>{shown}</strong><button type="button" aria-label={`Decrease ${element.name||element.variableId||'value'}`} onClick={e=>{e.stopPropagation();stepCloseUpNumber(element,-1,bundle)}}>▼</button></div>;
+    }
+    if(element.type==='toggle'){
+      const values=element.toggle?.values||[];const current=readVariableValue(element.variableId,bundle)??values[0]??'';
+      if(element.toggle?.segmented)return <div className="runtime-closeup-segments">{values.map(value=><button type="button" key={String(value)} className={String(current)===String(value)?'active':''} onClick={e=>{e.stopPropagation();writeVariableValue(element.variableId,value,bundle)}}>{String(value)}</button>)}</div>;
+      return <button type="button" className="runtime-closeup-toggle" onClick={e=>{e.stopPropagation();cycleCloseUpToggle(element,bundle)}}>{String(current)}</button>;
+    }
+    if(element.type==='closeButton')return <button type="button" className="runtime-closeup-button" onClick={e=>{e.stopPropagation();closeCloseUp()}}>{element.label||'Close'}</button>;
+    if(element.type==='button')return <button type="button" className="runtime-closeup-button" onClick={async e=>{e.stopPropagation();await activateCloseUpElement(element,bundle)}}>{element.label||element.name||'Button'}</button>;
+    return null;
+  }
 
 
   return <div className="runtime-overlay" style={{background:settings.runtimeBackground||'#08090b'}}><div className="runtime-topbar"><strong>PLAY MODE</strong><span>{sceneRef.name}</span><button onClick={onClose}>Exit play</button></div><div className="runtime-fit"><div ref={runtimeScreenRef} className={`runtime-screen ${activeRuntimeCursorUrl?'custom-cursor-active':''}`} style={uiScreenStyle()} onMouseMove={e=>updateRuntimeCursorPoint(e,true)} onMouseEnter={e=>updateRuntimeCursorPoint(e,true)} onMouseLeave={()=>setRuntimeCursorPoint(p=>({...p,visible:false}))}>
@@ -916,6 +1009,11 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       {el.type==='image'&&projectData.assetUrls.ui?.[el.id]?<img src={projectData.assetUrls.ui[el.id]} alt=""/>:null}
       {!['statusText','inventory','image','panel'].includes(el.type)&&el.style?.showLabel!==false?<span className="runtime-ui-skin-label">{el.label||el.name}</span>:null}
     </div>})}
+    {activeCloseUp?<div className={`runtime-closeup-layer ${activeCloseUp.modal!==false?'modal':'non-modal'} ${activeCloseUp.dimBackground!==false?'dimmed':''}`} onMouseMove={e=>{updateRuntimeCursorPoint(e,true);setHoverCursorRole('gui')}} onMouseEnter={()=>setHoverCursorRole('gui')} onMouseLeave={()=>setHoverCursorRole('normal')} onClick={e=>{e.stopPropagation();if(activeCloseUp.closeOnOutsideClick)closeCloseUp()}}>
+      <div className="runtime-closeup-panel" style={closeUpPanelStyle(activeCloseUp)} role="dialog" aria-modal={activeCloseUp.modal!==false} aria-label={activeCloseUp.name||'Close-up controls'} onClick={e=>e.stopPropagation()}>
+        {[...(activeCloseUp.elements||[])].sort((a,b)=>(a.transform?.z||0)-(b.transform?.z||0)).map(element=><div key={element.id} className={`runtime-closeup-element runtime-closeup-${element.type}`} style={closeUpElementStyle(element)}>{renderCloseUpElement(element)}</div>)}
+      </div>
+    </div>:null}
     {activeCutscene?<div className={`runtime-cutscene-layer phase-${activeCutscene.phase||'video'}`} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(['before','after'].includes(activeCutscene.phase)){e.stopPropagation();advanceCutsceneText()}}}>
       <video ref={cutsceneVideoRef} className={`runtime-cutscene-video fit-${activeCutscene.cutscene.fit||'contain'}`} src={activeCutscene.url} autoPlay={activeCutscene.phase==='video'} playsInline muted={!!activeCutscene.cutscene.muted} onLoadedData={async e=>{if(activeCutscene.phase!=='video'){e.currentTarget.pause();if(activeCutscene.phase==='before'){try{e.currentTarget.currentTime=0}catch{}}return}try{await e.currentTarget.play();setCutsceneNeedsGesture(false)}catch{setCutsceneNeedsGesture(true)}}} onTimeUpdate={e=>setCutsceneTime(e.currentTarget.currentTime)} onEnded={()=>finishCutsceneVideo()} onError={()=>finishActiveCutscene({skipped:true})}/>
       {activeCutsceneSubtitle?.text?<div className="runtime-cutscene-subtitle">{activeCutsceneSubtitle.text}</div>:null}

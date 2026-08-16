@@ -16,6 +16,9 @@ function allActions(bundle) {
       }
     }
   }
+  for (const closeUp of bundle?.closeUps?.closeUps || []) {
+    for (const element of closeUp.elements || []) if (element.action) out.push({ action: element.action, closeUp, element, index: 0, origin: 'closeup' });
+  }
   return out;
 }
 
@@ -86,6 +89,8 @@ export function validateProject({ project, projectData, scenes = [] }) {
     const where = { sceneId, sceneName: ref.name };
     const objectIds = new Set((bundle.objects || []).map((o) => o.id));
     const ruleIds = new Set((bundle.logic?.rules || []).map((r) => r.id));
+    const closeUpIds = new Set((bundle.closeUps?.closeUps || []).map((c) => c.id));
+    const cutsceneIds = new Set((bundle.cutscenes?.cutscenes || []).map((c) => c.id));
     const localVariableIds = new Set((bundle.logic?.variables || []).map((v) => v.id));
     const knownVariable = (id) => globalVariableIds.has(id) || localVariableIds.has(id);
     const isTitle = bundle.meta?.sceneType === 'title';
@@ -175,9 +180,20 @@ export function validateProject({ project, projectData, scenes = [] }) {
       }
     }
 
+    for (const object of bundle.objects || []) {
+      for (const [verb,binding] of Object.entries(object.hotspot?.actions || {})) {
+        if (binding?.openCloseUpId && !closeUpIds.has(binding.openCloseUpId)) issues.push(issue('error','hotspot-bad-closeup',`Object "${object.name || object.id}" ${verb} response opens missing close-up "${binding.openCloseUpId}".`,where));
+      }
+    }
+    for (const closeUp of bundle.closeUps?.closeUps || []) {
+      for (const element of closeUp.elements || []) {
+        if (element.variableId && !knownVariable(element.variableId)) issues.push(issue('error','closeup-bad-variable',`Close-up "${closeUp.name || closeUp.id}" control "${element.name || element.id}" binds undefined variable "${element.variableId}".`,where));
+      }
+    }
+
     for (const entry of allActions(bundle)) {
       const { action } = entry;
-      const label = entry.origin === 'rule' ? `Rule "${entry.rule.name}"` : `A dialogue choice in "${entry.dialogue.characterId}"`;
+      const label = entry.origin === 'rule' ? `Rule "${entry.rule.name}"` : entry.origin === 'closeup' ? `Close-up "${entry.closeUp.name || entry.closeUp.id}" control "${entry.element.name || entry.element.id}"` : `A dialogue choice in "${entry.dialogue.characterId}"`;
       const actionWhere = { ...where, ruleId: entry.rule?.id };
       const key = action.targetId || '';
       if (action.type === 'giveItem') {
@@ -191,9 +207,12 @@ export function validateProject({ project, projectData, scenes = [] }) {
         if (id) itemRemovals.set(id, [...(itemRemovals.get(id) || []), `${label} in ${ref.name}`]);
       }
       if (action.type === 'setFlag' && key) flagsSet.add(key);
-      if (action.type === 'setVariable' && key && !knownVariable(key)) {
+      if (['setVariable','incrementVariable','decrementVariable'].includes(action.type) && key && !knownVariable(key)) {
         issues.push(issue('error', 'action-bad-variable', `${label} writes undefined variable "${key}".`, actionWhere));
       }
+      if (action.type === 'openCloseUp' && key && !closeUpIds.has(key)) issues.push(issue('error','action-bad-closeup',`${label} opens missing close-up "${key}".`,actionWhere));
+      if (action.type === 'playCutscene' && key && !cutsceneIds.has(key)) issues.push(issue('error','action-bad-cutscene',`${label} plays missing cutscene "${key}".`,actionWhere));
+      if (action.type === 'customRule' && action.value && !ruleIds.has(action.value)) issues.push(issue('error','action-bad-rule',`${label} runs missing rule "${action.value}".`,actionWhere));
       if (action.type === 'changeScene') {
         const destination = String(action.value || key || '');
         if (!destination) issues.push(issue('warning', 'action-no-scene', `${label} has a changeScene with no destination.`, actionWhere));

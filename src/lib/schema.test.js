@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createCutscene, createCutsceneConfig, createInventoryItem, createObjectConfig, createProjectSettings, createProjectUi, createRule, createSceneManifest, createVisualConfig } from './schema.js';
+import { createCharacterDefinition, createCharacterObjectConfig, createCloseUp, createCloseUpConfig, createCloseUpElement, createDialogueConfig, createCutscene, createCutsceneConfig, createInventoryItem, createObjectConfig, createProjectSettings, createProjectUi, createRule, createSceneManifest, createVisualConfig } from './schema.js';
 
 test('scene character objects reference project characters', () => {
   const character = { ...createCharacterDefinition('Captain Nib'), id: 'captain-nib' };
@@ -146,4 +146,19 @@ test('scene cutscenes are authored in their own scene-scoped file', () => {
   assert.deepEqual(cutscene.beforeText, []);
   assert.deepEqual(cutscene.subtitles, []);
   assert.deepEqual(cutscene.afterText, []);
+});
+
+
+test('scene close-ups are authored in their own scene-scoped file with variable-bound controls', () => {
+  const config=createCloseUpConfig('scene7');
+  const panel=createCloseUp('Directional Alignment Controls');
+  const stepper=createCloseUpElement('numberStepper');
+  const toggle=createCloseUpElement('toggle');
+  assert.equal(config.kind,'scemq-scene-closeups');
+  assert.equal(config.sceneId,'scene7');
+  assert.deepEqual(config.closeUps,[]);
+  assert.equal(panel.modal,true);
+  assert.equal(panel.position,'center');
+  assert.deepEqual(stepper.number,{min:0,max:9,step:1,wrap:true,pad:0});
+  assert.deepEqual(toggle.toggle.values,['N','S']);
 });

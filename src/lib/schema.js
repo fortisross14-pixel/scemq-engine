@@ -18,19 +18,23 @@ export const ACTION_TYPES = [
   // v0.6 cutscene/sequencing vocabulary
   'wait', 'moveCharacterTo', 'faceCharacter', 'cameraPanTo', 'cameraFollowPlayer',
   'setInputEnabled', 'fadeOut', 'fadeIn', 'playSound', 'playMusic', 'stopMusic',
-  'switchPlayerCharacter', 'stopDialogue'
+  'switchPlayerCharacter', 'stopDialogue',
+  // v0.8.4 modal close-ups + direct cinematic hook
+  'openCloseUp', 'closeCloseUp', 'incrementVariable', 'decrementVariable', 'playCutscene'
 ];
 
 // Actions whose targetId is a scene object id (used by validation and editors).
 export const OBJECT_ACTION_TYPES = ['setVisualState', 'showObject', 'hideObject', 'moveCharacter'];
 
 // Actions that can block a sequence until they finish.
-export const AWAITABLE_ACTION_TYPES = ['say', 'wait', 'moveCharacterTo', 'cameraPanTo', 'playAnimation', 'fadeOut', 'fadeIn'];
+export const AWAITABLE_ACTION_TYPES = ['say', 'wait', 'moveCharacterTo', 'cameraPanTo', 'playAnimation', 'fadeOut', 'fadeIn', 'playCutscene'];
 
 export const SEQUENCE_ACTION_TYPES = [
   'wait', 'moveCharacterTo', 'faceCharacter', 'cameraPanTo', 'cameraFollowPlayer',
   'setInputEnabled', 'fadeOut', 'fadeIn', 'playSound', 'playMusic', 'stopMusic',
-  'switchPlayerCharacter', 'stopDialogue'
+  'switchPlayerCharacter', 'stopDialogue',
+  // v0.8.4 modal close-ups + direct cinematic hook
+  'openCloseUp', 'closeCloseUp', 'incrementVariable', 'decrementVariable', 'playCutscene'
 ];
 
 export const OBJECT_TYPES = ['scenery', 'prop', 'character', 'hotspot', 'exit'];
@@ -220,6 +224,60 @@ export function createVisualConfig(sceneId) {
   };
 }
 
+
+
+export function createCloseUpConfig(sceneId) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    kind: 'scemq-scene-closeups',
+    sceneId,
+    closeUps: []
+  };
+}
+
+export function createCloseUp(name = 'New Close-Up') {
+  const id = slugify(name, uniqueId('closeup'));
+  return {
+    id,
+    name,
+    modal: true,
+    dimBackground: true,
+    closeOnOutsideClick: false,
+    pauseWorldInput: true,
+    closeOnEscape: true,
+    position: 'center',
+    transform: { x: 0, y: 0, width: 850, height: 430 },
+    style: { background: '#171a20', color: '#f4f0e4', borderColor: '#625b4e', borderRadius: 16 },
+    elements: []
+  };
+}
+
+export function createCloseUpElement(type = 'text') {
+  const id = uniqueId(`closeup-${type}`);
+  const sizes = {
+    image: { width: 180, height: 120 },
+    text: { width: 240, height: 48 },
+    button: { width: 150, height: 52 },
+    closeButton: { width: 120, height: 48 },
+    numberStepper: { width: 92, height: 150 },
+    toggle: { width: 110, height: 54 }
+  };
+  const size = sizes[type] || sizes.text;
+  return {
+    id,
+    type,
+    name: `New ${type}`,
+    label: type === 'closeButton' ? 'Close' : type === 'numberStepper' ? '' : type === 'toggle' ? 'N / S' : type === 'text' ? 'Text' : 'Button',
+    transform: { x: 40, y: 40, width: size.width, height: size.height, z: 20 },
+    style: { fontSize: type === 'numberStepper' ? 28 : 18, background: type === 'text' || type === 'image' ? 'transparent' : '#292d35', color: '#f4f0e4' },
+    asset: '',
+    assetFit: 'contain',
+    variableId: '',
+    number: type === 'numberStepper' ? { min: 0, max: 9, step: 1, wrap: true, pad: 0 } : undefined,
+    toggle: type === 'toggle' ? { values: ['N', 'S'], segmented: false } : undefined,
+    action: type === 'closeButton' ? { type: 'closeCloseUp', targetId: '', value: '' } : type === 'button' ? { type: 'none', targetId: '', value: '' } : undefined
+  };
+}
 
 export function createCutsceneConfig(sceneId) {
   return {

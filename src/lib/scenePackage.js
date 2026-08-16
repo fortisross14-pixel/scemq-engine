@@ -7,7 +7,7 @@ function actionRefs(actions = [], refs) {
     if (!action) continue;
     if (action.type === 'giveItem' || action.type === 'removeItem') refs.inventory.add(action.targetId || action.value || '');
     if (action.type === 'startDialogue' || action.type === 'playAnimation') refs.characters.add(action.targetId || '');
-    if (action.type === 'setVariable') refs.variables.add(action.targetId || '');
+    if (['setVariable','incrementVariable','decrementVariable'].includes(action.type)) refs.variables.add(action.targetId || '');
     if (action.type === 'changeScene') refs.scenes.add(action.value || action.targetId || '');
   }
 }
@@ -54,6 +54,7 @@ export function collectSceneReferences(scene = {}) {
   }
 
   for (const cutscene of scene.cutscenes?.cutscenes || []) conditionRefs(cutscene.conditions, refs);
+  for (const closeUp of scene.closeUps?.closeUps || []) for (const element of closeUp.elements || []) { if (element.variableId) refs.variables.add(element.variableId); if (element.action) actionRefs([element.action], refs); }
 
   for (const id of localVariables) refs.variables.delete(id);
   for (const set of Object.values(refs)) set.delete('');
@@ -100,6 +101,7 @@ export function createScenePackage({ scene, projectData, project }) {
       visual: scene.visual,
       logic: scene.logic,
       cutscenes: scene.cutscenes,
+      closeUps: scene.closeUps,
       objects: scene.objects || [],
       dialogues: scene.dialogues || []
     },
@@ -140,6 +142,8 @@ export function analyzeScenePackage(pkg, project = {}, projectData = {}) {
   const playerObjectId = pkg?.scene?.visual?.player?.characterObjectId;
   if (playerObjectId && !objectIds.has(playerObjectId)) errors.push(`Playable character object "${playerObjectId}" is missing.`);
   const dialogueMap = new Map((pkg?.scene?.dialogues || []).map(d => [d.characterId, d]));
+  const closeUpIds = new Set((pkg?.scene?.closeUps?.closeUps || []).map(c => c.id));
+  const cutsceneIds = new Set((pkg?.scene?.cutscenes?.cutscenes || []).map(c => c.id));
   const checkActions = (actions = []) => {
     for (const action of actions || []) {
       if (action?.type === 'startDialogue') {
@@ -152,8 +156,13 @@ export function analyzeScenePackage(pkg, project = {}, projectData = {}) {
         if (!object) errors.push(`Set Visual State targets missing object "${action.targetId}".`);
         else if (action.value && !Object.hasOwn(object.asset?.states || {}, action.value)) errors.push(`Object ${action.targetId} has no visual state "${action.value}".`);
       }
+      if (action?.type === 'openCloseUp' && action.targetId && !closeUpIds.has(action.targetId)) errors.push(`Open Close-Up targets missing panel "${action.targetId}".`);
+      if (action?.type === 'playCutscene' && action.targetId && !cutsceneIds.has(action.targetId)) errors.push(`Play Cutscene targets missing cutscene "${action.targetId}".`);
     }
   };
+  for (const object of objects) for (const binding of Object.values(object.hotspot?.actions || {})) if (binding?.openCloseUpId && !closeUpIds.has(binding.openCloseUpId)) errors.push(`Hotspot on ${object.id} opens missing close-up "${binding.openCloseUpId}".`);
+  for (const closeUp of pkg?.scene?.closeUps?.closeUps || []) for (const element of closeUp.elements || []) if (element.action) checkActions([element.action]);
+
   for (const rule of pkg?.scene?.logic?.rules || []) {
     if (rule.event?.targetType === 'inventory' && rule.event?.targetId && !existingInventory.has(rule.event.targetId) && !includedInventory.has(rule.event.targetId)) errors.push(`Rule "${rule.name || rule.id}" targets missing inventory item "${rule.event.targetId}".`);
     if (rule.event?.targetType !== 'inventory' && rule.event?.targetId && !objectIds.has(rule.event.targetId)) errors.push(`Rule "${rule.name || rule.id}" targets missing object "${rule.event.targetId}".`);
@@ -193,6 +202,7 @@ export function remapScenePackage(pkg, newSceneId) {
     rules: (scene.logic.rules || []).map(rule => ({ ...rule, actions: (rule.actions || []).map(a => remapAction(a, oldId, newSceneId)) }))
   };
   if (scene.cutscenes) scene.cutscenes = { ...scene.cutscenes, sceneId:newSceneId };
+  if (scene.closeUps) scene.closeUps = { ...scene.closeUps, sceneId:newSceneId };
   scene.objects = (scene.objects || []).map(object => ({
     ...object,
     sceneId: newSceneId,

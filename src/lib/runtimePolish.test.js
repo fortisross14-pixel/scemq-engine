@@ -126,3 +126,28 @@ test('object verbs can use a direct simple text response without a Logic rule', 
   assert.match(runtimeSource, /stringKey\.objectResponse\(sceneRef\.id,obj\.id,verb\)/);
   assert.match(runtimeSource, /sayLine\(localized,playerDefinition\?\.id\|\|''/);
 });
+
+test('runtime close-ups are screen-space modal controls bound directly to variables', async () => {
+  const source=await readFile(runtimeUrl,'utf8');
+  const editorSource=await readFile(new URL('../components/CloseUpEditor.jsx', import.meta.url),'utf8');
+  assert.match(source,/runtime-closeup-layer/);
+  assert.match(source,/runtime-closeup-panel/);
+  assert.match(source,/stepCloseUpNumber/);
+  assert.match(source,/cycleCloseUpToggle/);
+  assert.match(source,/writeVariableValue\(element\.variableId/);
+  assert.match(source,/if\(playerId\)completeActorMove\(playerId\)/);
+  assert.match(editorSource,/Numeric|numberStepper/i);
+  assert.match(editorSource,/Bound variable/);
+  assert.match(editorSource,/Wrap at min\/max/);
+});
+
+test('hotspots can open close-ups directly and Logic can explicitly play a cutscene', async () => {
+  const runtimeSource=await readFile(runtimeUrl,'utf8');
+  const visualSource=await readFile(new URL('../components/VisualEditor.jsx', import.meta.url),'utf8');
+  const logicSource=await readFile(new URL('../components/LogicEditor.jsx', import.meta.url),'utf8');
+  assert.match(visualSource,/Open Close-Up \(optional\)/);
+  assert.match(runtimeSource,/binding\?\.openCloseUpId/);
+  assert.match(runtimeSource,/case 'openCloseUp'/);
+  assert.match(runtimeSource,/case 'playCutscene'/);
+  assert.match(logicSource,/playCutscene:'Play a named scene cutscene immediately/);
+});
