@@ -13,7 +13,7 @@ const scenes = [{
   ref: { id: 'scene1', name: 'The Docks' },
   bundle: {
     meta: { sceneType: 'gameplay' },
-    objects: [{ id: 'crate', name: 'Crate', hotspot: { label: 'wooden crate' } }],
+    objects: [{ id: 'crate', name: 'Crate', hotspot: { label: 'wooden crate', actions: { look: { textResponse: 'A very ordinary crate.' } } } }],
     logic: { rules: [{ id: 'r1', name: 'Look at crate', actions: [{ type: 'say', value: 'It smells of fish.' }, { type: 'setFlag' }] }] },
     dialogues: [{
       characterId: 'mara',
@@ -28,6 +28,7 @@ test('extraction reaches project text and every scene', () => {
   assert.ok(keys.includes(key.itemDescription('key')));
   assert.ok(keys.includes(key.uiLabel('save-button')));
   assert.ok(keys.includes(key.objectLabel('scene1', 'crate')));
+  assert.ok(keys.includes(key.objectResponse('scene1', 'crate', 'look')));
   assert.ok(keys.includes(key.actionSay('scene1', 'r1', 0)));
   assert.ok(keys.includes(key.dialogueBeat('scene1', 'mara', 'start', 'b1')));
   assert.ok(keys.includes(key.dialogueChoice('scene1', 'mara', 'start', 'c1')));

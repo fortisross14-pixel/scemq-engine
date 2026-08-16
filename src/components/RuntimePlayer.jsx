@@ -95,6 +95,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const speechResolversRef = useRef(new Map());
   const speechCounterRef = useRef(0);
   const npcMoveResolversRef = useRef(new Map());
+  const moveCompletionArmedRef = useRef(new Set());
   const audioRef = useRef(null);
   const startedAtRef = useRef(Date.now());
   const interactionWarningTimerRef = useRef(0);
@@ -110,6 +111,15 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   useEffect(()=>{cameraRef.current=camera},[camera]);
   useEffect(()=>{cameraLockedRef.current=cameraLocked},[cameraLocked]);
   useEffect(()=>{inputEnabledRef.current=inputEnabled},[inputEnabled]);
+  useEffect(()=>{
+    const video=cutsceneVideoRef.current;if(!video||!activeCutscene)return;
+    if(activeCutscene.phase==='video'){
+      video.play().then(()=>setCutsceneNeedsGesture(false)).catch(()=>setCutsceneNeedsGesture(true));
+    }else{
+      video.pause();
+      if(activeCutscene.phase==='before'&&video.currentTime>0.05){try{video.currentTime=0}catch{}}
+    }
+  },[activeCutscene?.phase,activeCutscene?.cutscene?.id]);
   function rememberPendingAction(action){pendingActionRef.current=action;setPendingAction(action)}
   function clearPendingAction(){pendingActionRef.current=null;setPendingAction(null)}
   function setInteractionBusyState(value){interactionBusyRef.current=!!value;setInteractionBusy(!!value)}
@@ -284,15 +294,30 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
         }
         return next;
       });
-      for(const objectId of finished){
-        const resolve=npcMoveResolversRef.current.get(objectId);
-        if(resolve){npcMoveResolversRef.current.delete(objectId);resolve(true)}
-      }
+      // React may execute the state updater after this callback returns, so
+      // resolving from the local `finished` array here can miss completion.
+      // A separate committed-state effect below resolves the movement promise.
       rafRef.current=requestAnimationFrame(frame);
     }
     rafRef.current=requestAnimationFrame(frame);
     return ()=>cancelAnimationFrame(rafRef.current);
   },[movingActors,bundle,paused,playerId,dialogue]);
+
+  // A movement promise resolves only after React has committed the actor from
+  // moving -> stopped. This prevents the player from visually reaching an
+  // interaction point while the pending action waits forever.
+  useEffect(()=>{
+    for(const objectId of Object.keys(movingActors)){
+      if(npcMoveResolversRef.current.has(objectId))moveCompletionArmedRef.current.add(objectId);
+    }
+    for(const [objectId,resolve] of npcMoveResolversRef.current.entries()){
+      if(moveCompletionArmedRef.current.has(objectId)&&!movingActors[objectId]){
+        npcMoveResolversRef.current.delete(objectId);
+        moveCompletionArmedRef.current.delete(objectId);
+        resolve(true);
+      }
+    }
+  },[movingActors]);
 
   function applyActorPosition(objectId,point,activeBundle=bundleRef.current,{clampToWalk=true}={}){
     if(!activeBundle)return point;
@@ -687,6 +712,12 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       }
     }
     const binding=obj.hotspot?.actions?.[verb];
+    const quickText=String(binding?.textResponse||'').trim();
+    if(quickText){
+      const localized=translate(stringKey.objectResponse(sceneRef.id,obj.id,verb),quickText);
+      sayLine(localized,playerDefinition?.id||'',{await:false});
+      return;
+    }
     let explicitHandled=false;
     if(binding?.ruleId){
       const result=await executeRule(binding.ruleId,bundleRef.current,{itemId:itemIdOverride||selectedItem});
@@ -886,9 +917,9 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       {!['statusText','inventory','image','panel'].includes(el.type)&&el.style?.showLabel!==false?<span className="runtime-ui-skin-label">{el.label||el.name}</span>:null}
     </div>})}
     {activeCutscene?<div className={`runtime-cutscene-layer phase-${activeCutscene.phase||'video'}`} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(['before','after'].includes(activeCutscene.phase)){e.stopPropagation();advanceCutsceneText()}}}>
-      {activeCutscene.phase==='video'?<video ref={cutsceneVideoRef} className={`runtime-cutscene-video fit-${activeCutscene.cutscene.fit||'contain'}`} src={activeCutscene.url} autoPlay playsInline muted={!!activeCutscene.cutscene.muted} onLoadedData={async e=>{try{await e.currentTarget.play();setCutsceneNeedsGesture(false)}catch{setCutsceneNeedsGesture(true)}}} onTimeUpdate={e=>setCutsceneTime(e.currentTarget.currentTime)} onEnded={()=>finishCutsceneVideo()} onError={()=>finishActiveCutscene({skipped:true})}/>:null}
+      <video ref={cutsceneVideoRef} className={`runtime-cutscene-video fit-${activeCutscene.cutscene.fit||'contain'}`} src={activeCutscene.url} autoPlay={activeCutscene.phase==='video'} playsInline muted={!!activeCutscene.cutscene.muted} onLoadedData={async e=>{if(activeCutscene.phase!=='video'){e.currentTarget.pause();if(activeCutscene.phase==='before'){try{e.currentTarget.currentTime=0}catch{}}return}try{await e.currentTarget.play();setCutsceneNeedsGesture(false)}catch{setCutsceneNeedsGesture(true)}}} onTimeUpdate={e=>setCutsceneTime(e.currentTarget.currentTime)} onEnded={()=>finishCutsceneVideo()} onError={()=>finishActiveCutscene({skipped:true})}/>
       {activeCutsceneSubtitle?.text?<div className="runtime-cutscene-subtitle">{activeCutsceneSubtitle.text}</div>:null}
-      {activeCutsceneText?<div className="runtime-cutscene-text-card"><div className={`runtime-cutscene-text-speaker ${activeCutsceneText.speakerId==='narrator'?'narrator':''}`}>{activeCutsceneText.speakerId==='narrator'?'Narrator':(activeCutsceneSpeaker?.name||activeCutsceneText.speakerId||'Narrator')}</div><div className="runtime-cutscene-text-line">{activeCutsceneText.text}</div><div className="runtime-cutscene-text-hint">Click to continue</div></div>:null}
+      {activeCutsceneText?<div className="runtime-cutscene-subtitle runtime-cutscene-sequence-subtitle"><span className={`runtime-cutscene-sequence-speaker ${activeCutsceneText.speakerId==='narrator'?'narrator':''}`}>{activeCutsceneText.speakerId==='narrator'?'Narrator':(activeCutsceneSpeaker?.name||activeCutsceneText.speakerId||'Narrator')}:</span> {activeCutsceneText.text}</div>:null}
       {activeCutscene.phase==='video'&&cutsceneNeedsGesture?<button className="runtime-cutscene-start" onClick={async e=>{e.stopPropagation();try{await cutsceneVideoRef.current?.play();setCutsceneNeedsGesture(false)}catch{}}}>Play cutscene</button>:null}
       {activeCutscene.cutscene.skippable!==false?<button className="runtime-cutscene-skip" onClick={e=>{e.stopPropagation();finishActiveCutscene({skipped:true})}}>Skip</button>:null}
     </div>:null}

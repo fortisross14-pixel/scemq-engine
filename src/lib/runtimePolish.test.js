@@ -73,7 +73,7 @@ test('cutscene sequences support click-through text before and after video', asy
   assert.match(source, /phase:\s*'video'/);
   assert.match(source, /finishCutsceneVideo/);
   assert.match(source, /advanceCutsceneText/);
-  assert.match(source, /Click to continue/);
+  assert.match(source, /runtime-cutscene-sequence-subtitle/);
 });
 
 test('cutscene pre and post text can identify narrator or project characters', async () => {
@@ -83,4 +83,40 @@ test('cutscene pre and post text can identify narrator or project characters', a
   assert.match(source, /Text after cutscene/);
   assert.match(source, /option value="narrator">Narrator/);
   assert.match(source, /projectCharacters/);
+});
+
+
+test('movement completion resolves from committed moving state so interactions cannot freeze at arrival', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /moveCompletionArmedRef/);
+  assert.match(source, /moveCompletionArmedRef\.current\.has\(objectId\)&&!movingActors\[objectId\]/);
+  assert.match(source, /resolve\(true\)/);
+});
+
+test('cutscene before and after text uses the same subtitle presentation over a paused video', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /autoPlay=\{activeCutscene\.phase==='video'\}/);
+  assert.match(source, /activeCutscene\.phase!=='video'/);
+  assert.match(source, /runtime-cutscene-subtitle runtime-cutscene-sequence-subtitle/);
+  assert.doesNotMatch(source, /runtime-cutscene-text-card/);
+});
+
+test('dialogue editor exposes logic-driven scene speech and monologues', async () => {
+  const editorUrl = new URL('../components/DialogueEditor.jsx', import.meta.url);
+  const source = await readFile(editorUrl, 'utf8');
+  assert.match(source, /Scene Speech \/ Monologues/);
+  assert.match(source, /rule\.actions\|\|\[\]\)\.some\(action=>action\.type==='say'\)/);
+  assert.match(source, /onChangeLogic/);
+});
+
+
+test('object verbs can use a direct simple text response without a Logic rule', async () => {
+  const runtimeSource = await readFile(runtimeUrl, 'utf8');
+  const editorUrl = new URL('../components/VisualEditor.jsx', import.meta.url);
+  const editorSource = await readFile(editorUrl, 'utf8');
+  assert.match(editorSource, /Simple text response \(optional\)/);
+  assert.match(editorSource, /textResponse/);
+  assert.match(runtimeSource, /const quickText=String\(binding\?\.textResponse\|\|''\)\.trim\(\)/);
+  assert.match(runtimeSource, /stringKey\.objectResponse\(sceneRef\.id,obj\.id,verb\)/);
+  assert.match(runtimeSource, /sayLine\(localized,playerDefinition\?\.id\|\|''/);
 });

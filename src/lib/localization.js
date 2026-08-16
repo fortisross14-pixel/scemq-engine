@@ -21,6 +21,7 @@ export const key = {
   itemPickup: (itemId) => `item.${itemId}.pickup`,
   uiLabel: (elementId) => `ui.${elementId}.label`,
   objectLabel: (sceneId, objectId) => `object.${sceneId}.${objectId}.label`,
+  objectResponse: (sceneId, objectId, verb) => `object.${sceneId}.${objectId}.response.${verb}`,
   exitBlocked: (sceneId, objectId) => `object.${sceneId}.${objectId}.blocked`,
   actionSay: (sceneId, ruleId, index) => `rule.${sceneId}.${ruleId}.say.${index}`,
   dialogueBeat: (sceneId, characterId, nodeId, beatId) => `dialogue.${sceneId}.${characterId}.${nodeId}.beat.${beatId}`,
@@ -63,6 +64,9 @@ export function extractStrings({ projectData = {}, scenes = [] } = {}) {
     }
     for (const object of bundle.objects || []) {
       push(entries, key.objectLabel(sceneId, object.id), object.hotspot?.label || object.name, `Hotspot label in ${ref.name}`);
+      for (const [verb, binding] of Object.entries(object.hotspot?.actions || {})) {
+        push(entries, key.objectResponse(sceneId, object.id, verb), binding?.textResponse, `${verb} response for ${object.name} in ${ref.name}`);
+      }
       if (object.type === 'exit') push(entries, key.exitBlocked(sceneId, object.id), object.exit?.blockedMessage, `Blocked exit message in ${ref.name}`);
     }
     for (const rule of bundle.logic?.rules || []) {

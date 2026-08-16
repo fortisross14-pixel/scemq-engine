@@ -585,3 +585,14 @@ textarea { resize: vertical; }
 .runtime-cutscene-text-speaker.narrator{font-style:italic;color:#ddd;text-transform:none;letter-spacing:.03em;}
 .runtime-cutscene-text-line{font-size:26px;font-weight:800;line-height:1.4;text-shadow:0 2px 6px #000;}
 .runtime-cutscene-text-hint{margin-top:18px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.55);}
+
+.runtime-cutscene-sequence-subtitle{cursor:pointer;}
+.runtime-cutscene-sequence-speaker{font-weight:900;color:#d9c18e;}
+.runtime-cutscene-sequence-speaker.narrator{font-style:italic;color:#fff;}
+.dialogue-mode-wrap{padding:8px 10px 0;background:#11151b;border-bottom:1px solid #2c333d;}
+.dialogue-mode-bar{display:flex;gap:6px;}
+.dialogue-mode-bar button{padding:8px 14px;border:1px solid #343c47;background:#171c23;color:#aeb9c8;border-radius:6px 6px 0 0;font-weight:800;}
+.dialogue-mode-bar button.active{background:#2a261c;color:#ffe08a;border-color:#6a5730;}
+.scene-speech-shell{overflow:auto;}
+.scene-speech-editor{padding:18px;max-width:760px;}
+.scene-speech-line{margin:0 0 14px;}
