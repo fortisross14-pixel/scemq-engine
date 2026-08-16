@@ -2,6 +2,7 @@ import {
   createCharacterDefinition,
   createInventoryItem,
   createLogicConfig,
+  createCutsceneConfig,
   createProjectManifest,
   createProjectSettings,
   createProjectUi,
@@ -104,7 +105,10 @@ export async function saveProject(root, manifest) {
 
 export async function loadProjectBundle(root, manifest) {
   const { projectDir, charactersDir, inventoryDir } = await ensureProjectModules(root, manifest);
-  const ui = await readJson(projectDir, 'project.ui.json');
+  const rawUi = await readJson(projectDir, 'project.ui.json');
+  const uiDefaults = createProjectUi();
+  const defaultGuiBackground = { x: 0, y: Number(rawUi.viewport?.y || 0) + Number(rawUi.viewport?.height || 0), width: Number(rawUi.screen?.width || uiDefaults.screen.width), height: Math.max(0, Number(rawUi.screen?.height || uiDefaults.screen.height) - (Number(rawUi.viewport?.y || 0) + Number(rawUi.viewport?.height || 0))) };
+  const ui = { ...uiDefaults, ...rawUi, screen: { ...uiDefaults.screen, ...(rawUi.screen || {}), guiBackground: { ...defaultGuiBackground, ...(rawUi.screen?.guiBackground || {}) } }, viewport: { ...uiDefaults.viewport, ...(rawUi.viewport || {}) }, cursors: { ...(uiDefaults.cursors || {}), ...(rawUi.cursors || {}) }, elements: rawUi.elements || uiDefaults.elements };
   const variables = await readJson(projectDir, 'project.variables.json');
   const rawSettings = await readJson(projectDir, 'project.settings.json');
   const defaults = createProjectSettings(manifest.name);
@@ -203,10 +207,12 @@ export async function createScene(root, project, sceneName, options = {}) {
   const visual = createVisualConfig(sceneId);
   if (sceneType === 'title') { visual.canvas = { ...visual.canvas, width: 1280, height: 900 }; visual.titleScreen = { ...visual.titleScreen, title: project.name || sceneName }; }
   const logic = createLogicConfig(sceneId);
+  const cutscenes = createCutsceneConfig(sceneId);
 
   await writeJson(sceneDir, `scene.meta.${sceneId}.json`, meta);
   await writeJson(sceneDir, `scene.visual.${sceneId}.json`, visual);
   await writeJson(sceneDir, `scene.logic.${sceneId}.json`, logic);
+  await writeJson(sceneDir, `scene.cutscenes.${sceneId}.json`, cutscenes);
 
   const nextProject = { ...project, scenes: [...project.scenes, { id: sceneId, name: sceneName, folder: sceneFolder, sceneType }] };
   return { sceneId, project: await saveProject(root, nextProject) };
@@ -279,6 +285,7 @@ export async function loadSceneBundle(root, sceneRef) {
   const meta = { ...rawMeta, sceneType: rawMeta.sceneType || 'gameplay', audio: { music: '', ambient: '', sfx: [], ...(rawMeta.audio || {}) } };
   const visual = migrateVisual(await readJson(sceneDir, `scene.visual.${sceneId}.json`));
   const logic = await readJson(sceneDir, `scene.logic.${sceneId}.json`);
+  const cutscenes = (await exists(sceneDir, `scene.cutscenes.${sceneId}.json`)) ? await readJson(sceneDir, `scene.cutscenes.${sceneId}.json`) : createCutsceneConfig(sceneId);
   const scannedObjects = (await scanJsonDirectory(objectsDir, `.object.${sceneId}.json`)).map(migrateObject);
   const objectMap = new Map(scannedObjects.map((object) => [object.id, object]));
   const refs = visual.objectRefs?.length ? visual.objectRefs : scannedObjects.map((object) => object.id);
@@ -310,6 +317,14 @@ export async function loadSceneBundle(root, sceneRef) {
     } catch {}
   }
 
+  for (const cutscene of (cutscenes.cutscenes || [])) {
+    if (!cutscene.video) continue;
+    try {
+      const fileHandle = await assetsDir.getFileHandle(cutscene.video);
+      assetUrls[`__cutscene:${cutscene.id}`] = URL.createObjectURL(await fileHandle.getFile());
+    } catch {}
+  }
+
   for (const object of objects) {
     const paths = new Set([object.asset?.path, ...Object.values(object.asset?.states || {})].filter(Boolean));
     for (const path of paths) {
@@ -322,7 +337,7 @@ export async function loadSceneBundle(root, sceneRef) {
     }
   }
 
-  return { meta, visual, logic: { ...logic, schemaVersion: '0.4' }, objects, dialogues, assetUrls, stateAssetUrls };
+  return { meta, visual, logic: { ...logic, schemaVersion: '0.4' }, cutscenes: { ...createCutsceneConfig(sceneId), ...cutscenes, sceneId, cutscenes: cutscenes.cutscenes || [] }, objects, dialogues, assetUrls, stateAssetUrls };
 }
 
 export async function saveSceneBundle(root, sceneRef, bundle) {
@@ -334,6 +349,7 @@ export async function saveSceneBundle(root, sceneRef, bundle) {
   await writeJson(sceneDir, `scene.meta.${sceneId}.json`, { ...bundle.meta, schemaVersion: '0.4', updatedAt: new Date().toISOString() });
   await writeJson(sceneDir, `scene.visual.${sceneId}.json`, { ...bundle.visual, schemaVersion: '0.4', playerStart: bundle.visual.player?.start || bundle.visual.playerStart });
   await writeJson(sceneDir, `scene.logic.${sceneId}.json`, { ...bundle.logic, schemaVersion: '0.4' });
+  await writeJson(sceneDir, `scene.cutscenes.${sceneId}.json`, { ...createCutsceneConfig(sceneId), ...(bundle.cutscenes || {}), sceneId, schemaVersion: '0.4' });
 
   const expectedObjectFiles = new Set();
   for (const object of bundle.objects) {
@@ -445,6 +461,8 @@ export async function embedScenePackageAssets(root, sceneRef, pkg) {
     await push(sceneAssets, object.asset?.path, 'scene');
     for (const path of Object.values(object.asset?.states || {})) await push(sceneAssets, path, 'scene');
   }
+
+  for (const cutscene of pkg.scene?.cutscenes?.cutscenes || []) await push(sceneAssets, cutscene.video, 'scene');
 
   const characterAssets = await ensureDirectory(root, ['assets', 'characters']);
   for (const character of pkg.dependencies?.characters || []) {

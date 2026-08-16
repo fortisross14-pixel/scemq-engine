@@ -91,7 +91,7 @@ export function createProjectUi() {
   return {
     schemaVersion: SCHEMA_VERSION,
     kind: 'scemq-project-ui',
-    screen: { width: 1280, height: 900, backgroundColor: '#111318', asset: '', assetFit: 'stretch' },
+    screen: { width: 1280, height: 900, backgroundColor: '#111318', asset: '', assetFit: 'stretch', guiBackground: { x: 0, y: 700, width: 1280, height: 200 } },
     viewport: { x: 0, y: 0, width: 1280, height: 700 },
     cursors: Object.fromEntries(VERBS.map((verb) => [verb, ''])),
     elements: [
@@ -217,6 +217,31 @@ export function createVisualConfig(sceneId) {
     depthAreas: [],
     scaleAreas: [],
     objectRefs: []
+  };
+}
+
+
+export function createCutsceneConfig(sceneId) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    kind: 'scemq-scene-cutscenes',
+    sceneId,
+    cutscenes: []
+  };
+}
+
+export function createCutscene(name = 'New Cutscene') {
+  return {
+    id: uniqueId('cutscene'),
+    name,
+    video: '',
+    trigger: 'enter',
+    once: true,
+    skippable: true,
+    muted: false,
+    fit: 'contain',
+    conditions: [],
+    subtitles: []
   };
 }
 

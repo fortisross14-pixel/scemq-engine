@@ -9,10 +9,26 @@ test('pending interactions preserve the requested action until walking completes
   assert.match(source, /pendingActionRef\s*=\s*useRef/);
   assert.match(source, /const committed=\{\.\.\.action[\s\S]*itemId:/);
   assert.match(source, /rememberPendingAction\(committed\)/);
-  assert.match(source, /const action=pendingActionRef\.current/);
+  assert.match(source, /void walk\.then\(\(\)=>\{if\(pendingActionRef\.current===committed\)void performPendingInteraction\(committed\)\}\)/);
   assert.match(source, /await performInteraction\(obj,action\.verb,action\.itemId/);
   assert.match(source, /interactionBusyRef\s*=\s*useRef/);
   assert.match(source, /setInteractionBusyState\(true\)/);
+});
+
+
+test('action animations have a safety completion clock so gameplay cannot stay locked forever', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /animationDurationMs\(resolved\.animation\)\+500/);
+  assert.match(source, /Animation .* did not report completion/);
+  assert.match(source, /animationResolversRef\.current\.delete\(resolverKey\)/);
+});
+
+test('runtime animation boxes use each active strip aspect while preserving scene-authored height', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /function animationRenderTransform\(baseTransform,animation\)/);
+  assert.match(source, /const height=Math\.max\(1,Number\(baseTransform\?\.height\|\|1\)\)/);
+  assert.match(source, /width:height\*ratio/);
+  assert.match(source, /animationRenderTransform\(playerT,anim\.animation\)/);
 });
 
 test('dialogue speech is rendered in viewport space rather than inside the scrolling world', async () => {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createInventoryItem, createObjectConfig, createProjectSettings, createProjectUi, createRule, createSceneManifest, createVisualConfig } from './schema.js';
+import { createCharacterDefinition, createCharacterObjectConfig, createDialogueConfig, createCutscene, createCutsceneConfig, createInventoryItem, createObjectConfig, createProjectSettings, createProjectUi, createRule, createSceneManifest, createVisualConfig } from './schema.js';
 
 test('scene character objects reference project characters', () => {
   const character = { ...createCharacterDefinition('Captain Nib'), id: 'captain-nib' };
@@ -126,4 +126,22 @@ test('project UI screen supports an optional skin image', () => {
   const ui = createProjectUi();
   assert.equal(ui.screen.asset, '');
   assert.equal(ui.screen.assetFit, 'stretch');
+});
+
+
+test('project UI exposes an independently sized bottom GUI background rectangle', () => {
+  const ui = createProjectUi();
+  assert.deepEqual(ui.screen.guiBackground, { x: 0, y: 700, width: 1280, height: 200 });
+});
+
+test('scene cutscenes are authored in their own scene-scoped file', () => {
+  const config = createCutsceneConfig('scene4');
+  const cutscene = createCutscene('Arrival');
+  assert.equal(config.kind, 'scemq-scene-cutscenes');
+  assert.equal(config.sceneId, 'scene4');
+  assert.deepEqual(config.cutscenes, []);
+  assert.equal(cutscene.trigger, 'enter');
+  assert.equal(cutscene.once, true);
+  assert.deepEqual(cutscene.conditions, []);
+  assert.deepEqual(cutscene.subtitles, []);
 });

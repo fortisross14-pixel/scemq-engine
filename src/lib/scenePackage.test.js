@@ -75,3 +75,22 @@ test('playAnimation actions make the character a portable scene dependency',()=>
  const refs=collectSceneReferences(scene);
  assert.equal(refs.characters.has('mara'),true);
 });
+
+
+test('cutscene conditions participate in portable scene dependencies',()=>{
+ const scene=sampleScene();
+ scene.cutscenes={kind:'scemq-scene-cutscenes',sceneId:'scene1',cutscenes:[{id:'intro',name:'Intro',video:'intro.mp4',trigger:'condition',conditions:[{left:'variable',key:'cutsceneGlobal',op:'equals',value:'true'}],subtitles:[]}]};
+ const refs=collectSceneReferences(scene);
+ assert.equal(refs.variables.has('cutsceneGlobal'),true);
+ const pkg=createScenePackage({scene,projectData:{characters:[{id:'mara'},{id:'pindle'}],inventory:[{id:'short-ruler',combinations:[]}],variables:{variables:[{id:'globalDay'},{id:'cutsceneGlobal'}]}},project:{scenes:[{id:'scene1'},{id:'scene2'}]}});
+ assert.equal(pkg.scene.cutscenes.cutscenes[0].video,'intro.mp4');
+ assert.equal(pkg.dependencies.variables.some(v=>v.id==='cutsceneGlobal'),true);
+});
+
+test('scene remap keeps cutscene files scene-scoped',()=>{
+ const scene=sampleScene();
+ scene.cutscenes={kind:'scemq-scene-cutscenes',sceneId:'scene1',cutscenes:[]};
+ const pkg={kind:'scemq-scene-package',packageVersion:1,sceneId:'scene1',scene,dependencies:{}};
+ const out=remapScenePackage(pkg,'scene9');
+ assert.equal(out.scene.cutscenes.sceneId,'scene9');
+});

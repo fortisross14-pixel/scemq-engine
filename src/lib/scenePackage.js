@@ -53,6 +53,8 @@ export function collectSceneReferences(scene = {}) {
     }
   }
 
+  for (const cutscene of scene.cutscenes?.cutscenes || []) conditionRefs(cutscene.conditions, refs);
+
   for (const id of localVariables) refs.variables.delete(id);
   for (const set of Object.values(refs)) set.delete('');
   return refs;
@@ -97,6 +99,7 @@ export function createScenePackage({ scene, projectData, project }) {
       meta: scene.meta,
       visual: scene.visual,
       logic: scene.logic,
+      cutscenes: scene.cutscenes,
       objects: scene.objects || [],
       dialogues: scene.dialogues || []
     },
@@ -189,6 +192,7 @@ export function remapScenePackage(pkg, newSceneId) {
     sceneId: newSceneId,
     rules: (scene.logic.rules || []).map(rule => ({ ...rule, actions: (rule.actions || []).map(a => remapAction(a, oldId, newSceneId)) }))
   };
+  if (scene.cutscenes) scene.cutscenes = { ...scene.cutscenes, sceneId:newSceneId };
   scene.objects = (scene.objects || []).map(object => ({
     ...object,
     sceneId: newSceneId,
