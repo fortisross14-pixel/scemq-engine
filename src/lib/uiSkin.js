@@ -1,11 +1,11 @@
-export const CURSOR_ROLES = ['normal','interactive','exit'];
+export const CURSOR_ROLES = ['normal','interactive','exit','gui'];
 
 export function cursorRoleForObject(object = {}) {
   return object?.type === 'exit' ? 'exit' : 'interactive';
 }
 
 export function normalizeCursorRoles(value = {}) {
-  return { normal: value.normal || '', interactive: value.interactive || '', exit: value.exit || '' };
+  return { normal: value.normal || '', interactive: value.interactive || '', exit: value.exit || '', gui: value.gui || '' };
 }
 
 export function backgroundSizeForFit(fit = 'stretch') {

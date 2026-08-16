@@ -8,8 +8,8 @@ test('cursor roles distinguish exits from ordinary interactive hotspots',()=>{
   assert.equal(cursorRoleForObject({type:'hotspot'}),'interactive');
 });
 
-test('cursor role normalization keeps all three semantic slots',()=>{
-  assert.deepEqual(normalizeCursorRoles({normal:'walk.png'}),{normal:'walk.png',interactive:'',exit:''});
+test('cursor role normalization keeps all four semantic slots',()=>{
+  assert.deepEqual(normalizeCursorRoles({normal:'walk.png'}),{normal:'walk.png',interactive:'',exit:'',gui:''});
 });
 
 test('interface background fit maps stretch to full rectangle sizing',()=>{

@@ -117,9 +117,9 @@ test('character scene objects carry an editable speech point', () => {
 });
 
 
-test('project settings expose three semantic cursor roles', () => {
+test('project settings expose four semantic cursor roles', () => {
   const settings = createProjectSettings('Test');
-  assert.deepEqual(settings.cursorRoles, { normal: '', interactive: '', exit: '' });
+  assert.deepEqual(settings.cursorRoles, { normal: '', interactive: '', exit: '', gui: '' });
 });
 
 test('project UI screen supports an optional skin image', () => {

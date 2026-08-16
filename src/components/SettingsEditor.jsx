@@ -62,12 +62,18 @@ export default function SettingsEditor({ settings, scenes, strings, assetUrls = 
         <div className="linked-note">Right-click fires the chosen verb straight away, the way a LucasArts player expects Look to work without a trip to the verb bar.</div>
         <div className="inspector-divider" />
         <div className="inspector-subtitle">Mouse cursors</div>
-        <div className="linked-note">SCEMQ automatically swaps between these three cursor roles while the player moves around the scene. PNG images with transparency work best; keep them small so the pointer remains precise.</div>
-        {[['normal','Normal / Walk'],['interactive','Interactive object'],['exit','Exit']].map(([role,label]) => {
+        <div className="linked-note">SCEMQ swaps automatically between four semantic cursor roles. Cursor PNGs are rendered at an explicit scale and their click hotspot is always the exact centre of the image, so large source PNGs no longer shift the interaction point.</div>
+        {[['normal','Normal / Walk'],['interactive','Interactive object'],['exit','Exit'],['gui','GUI / Pointing hand']].map(([role,label]) => {
           const path = settings.cursorRoles?.[role] || '';
           return <div className="cursor-row settings-cursor-row" key={role}><span>{label}</span><code>{path || 'browser default'}</code><div className="toolbar-group"><button onClick={() => onChooseCursorRole?.(role)}>Choose</button>{path ? <button className="icon-button" onClick={() => onClearCursorRole?.(role)}>×</button> : null}</div></div>;
         })}
-        <div className="linked-note">Normal / Walk is used over empty scene space. Interactive is used over ordinary hotspots and characters. Exit is used over exit hotspots.</div>
+        <div className="cursor-scale-row">
+          <span>Cursor scale</span>
+          <input type="range" min="1" max="200" step="1" value={Math.max(1,Math.min(200,Number(settings.cursorScale ?? 100)))} onChange={(e)=>patch({cursorScale:Number(e.target.value)})}/>
+          <input className="cursor-scale-number" type="number" min="1" max="200" value={Math.max(1,Math.min(200,Number(settings.cursorScale ?? 100)))} onChange={(e)=>patch({cursorScale:Math.max(1,Math.min(200,Number(e.target.value)||1))})}/>
+          <span className="tiny muted">%</span>
+        </div>
+        <div className="linked-note">100% uses the PNG's natural dimensions, 50% is half-size, 1% is one-hundredth size, and 200% is twice the natural size. Normal / Walk is used over empty scene space, Interactive over ordinary hotspots and characters, Exit over exits, and GUI over bottom-interface controls and inventory slots.</div>
 
         <div className="inspector-divider" />
         <div className="inspector-subtitle">Speech</div>
