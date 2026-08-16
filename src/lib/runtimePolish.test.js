@@ -101,13 +101,14 @@ test('cutscene before and after text uses the same subtitle presentation over a 
   assert.doesNotMatch(source, /runtime-cutscene-text-card/);
 });
 
-test('dialogue editor exposes logic-driven speech and playable-character dialogue nodes as monologues', async () => {
+test('dialogue editor follows scene logic into the actual monologue dialogue node', async () => {
   const editorUrl = new URL('../components/DialogueEditor.jsx', import.meta.url);
   const source = await readFile(editorUrl, 'utf8');
   assert.match(source, /Scene Speech \/ Monologues/);
-  assert.match(source, /const sayActions=\(rule\.actions\|\|\[\]\)\.filter\(action=>action\.type==='say'\)/);
-  assert.match(source, /projectCharacters\.filter\(character=>character\.playable\)/);
-  assert.match(source, /action\.type==='startDialogue'&&action\.targetId===dialogue\.characterId/);
+  assert.match(source, /action\.type!=='startDialogue'/);
+  assert.match(source, /dialogues\.find\(candidate=>candidate\.characterId===action\.targetId\)/);
+  assert.match(source, /rule\.event\?\.type==='onEnterScene'/);
+  assert.match(source, /object\.character\?\.role==='playable'/);
   assert.match(source, /kind:'dialogueNode'/);
   assert.match(source, /updateSpeechDialogueNode/);
   assert.match(source, /onChangeLogic/);
