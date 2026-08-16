@@ -79,6 +79,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
   const [interactionWarning, setInteractionWarning] = useState('');
   const [activeCutscene, setActiveCutscene] = useState(null);
   const [cutsceneTime, setCutsceneTime] = useState(0);
+  const [cutsceneTextIndex, setCutsceneTextIndex] = useState(0);
   const [cutsceneNeedsGesture, setCutsceneNeedsGesture] = useState(false);
   const rafRef = useRef(0);
   const moveQueueRef = useRef([]);
@@ -397,7 +398,7 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     if(!value){current?.(false);cutsceneResolverRef.current=null;return}
     const key=cutsceneKey(value.cutscene,value.bundle);
     setRuntimePatch(state=>({...state,playedCutscenes:{...(state.playedCutscenes||{}),[key]:true}}));
-    setActiveCutscene(null);setCutsceneTime(0);setCutsceneNeedsGesture(false);
+    setActiveCutscene(null);setCutsceneTime(0);setCutsceneTextIndex(0);setCutsceneNeedsGesture(false);
     audioRef.current.setMuted(false);
     cutsceneResolverRef.current=null;
     current?.(!skipped);
@@ -406,11 +407,26 @@ export default function RuntimePlayer({ project, projectData, initialScene, load
     const url=activeBundle?.assetUrls?.[`__cutscene:${cutscene.id}`];
     if(!url)return Promise.resolve(false);
     audioRef.current.setMuted(true);
-    setCutsceneTime(0);setCutsceneNeedsGesture(false);
+    setCutsceneTime(0);setCutsceneTextIndex(0);setCutsceneNeedsGesture(false);
+    const phase=(cutscene.beforeText||[]).length?'before':'video';
     return new Promise(resolve=>{
       cutsceneResolverRef.current=resolve;
-      setActiveCutscene({cutscene,bundle:activeBundle,url});
+      setActiveCutscene({cutscene,bundle:activeBundle,url,phase});
     });
+  }
+  function advanceCutsceneText(){
+    if(!activeCutscene||!['before','after'].includes(activeCutscene.phase))return;
+    const lines=activeCutscene.phase==='before'?(activeCutscene.cutscene.beforeText||[]):(activeCutscene.cutscene.afterText||[]);
+    if(cutsceneTextIndex<lines.length-1){setCutsceneTextIndex(i=>i+1);return}
+    if(activeCutscene.phase==='before'){
+      setCutsceneTextIndex(0);setCutsceneTime(0);setActiveCutscene(value=>value?{...value,phase:'video'}:value);return;
+    }
+    finishActiveCutscene();
+  }
+  function finishCutsceneVideo(){
+    if(!activeCutscene)return;
+    if((activeCutscene.cutscene.afterText||[]).length){setCutsceneTextIndex(0);setActiveCutscene(value=>value?{...value,phase:'after'}:value);return}
+    finishActiveCutscene();
   }
   async function checkCutscenes(activeBundle=bundleRef.current, trigger='condition'){
     if(!activeBundle?.cutscenes?.cutscenes?.length||activeBundle.meta?.sceneType==='title'||cutsceneCheckRef.current)return;
@@ -831,7 +847,10 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
   const runtimeCursorScale=Math.max(1,Math.min(200,Number(settings.cursorScale ?? 100)))/100;
   const guiRect=bottomGuiRect();
   const guiBackgroundUrl=ui.screen?.asset?projectData.assetUrls.ui?.__screenBackground:'';
-  const activeCutsceneSubtitle=activeCutscene?.cutscene?.subtitles?.find(subtitle=>cutsceneTime>=Number(subtitle.start||0)&&cutsceneTime<=Number(subtitle.end||0));
+  const activeCutsceneSubtitle=activeCutscene?.phase==='video'?activeCutscene?.cutscene?.subtitles?.find(subtitle=>cutsceneTime>=Number(subtitle.start||0)&&cutsceneTime<=Number(subtitle.end||0)):null;
+  const activeCutsceneText=activeCutscene&&['before','after'].includes(activeCutscene.phase)?((activeCutscene.phase==='before'?activeCutscene.cutscene.beforeText:activeCutscene.cutscene.afterText)||[])[cutsceneTextIndex]:null;
+  const activeCutsceneSpeaker=activeCutsceneText?.speakerId==='narrator'?null:projectData.characters.find(c=>c.id===activeCutsceneText?.speakerId);
+
 
   return <div className="runtime-overlay" style={{background:settings.runtimeBackground||'#08090b'}}><div className="runtime-topbar"><strong>PLAY MODE</strong><span>{sceneRef.name}</span><button onClick={onClose}>Exit play</button></div><div className="runtime-fit"><div ref={runtimeScreenRef} className={`runtime-screen ${activeRuntimeCursorUrl?'custom-cursor-active':''}`} style={uiScreenStyle()} onMouseMove={e=>updateRuntimeCursorPoint(e,true)} onMouseEnter={e=>updateRuntimeCursorPoint(e,true)} onMouseLeave={()=>setRuntimeCursorPoint(p=>({...p,visible:false}))}>
     {guiBackgroundUrl&&guiRect.height>0?<div className="runtime-gui-background" style={{left:guiRect.left,top:guiRect.top,width:guiRect.width,height:guiRect.height}}><img src={guiBackgroundUrl} alt="" style={{objectFit:ui.screen.assetFit==='cover'?'cover':ui.screen.assetFit==='contain'?'contain':'fill'}}/></div>:null}
@@ -866,11 +885,12 @@ function inventoryInteractionLabel(itemId){const item=projectData.inventory.find
       {el.type==='image'&&projectData.assetUrls.ui?.[el.id]?<img src={projectData.assetUrls.ui[el.id]} alt=""/>:null}
       {!['statusText','inventory','image','panel'].includes(el.type)&&el.style?.showLabel!==false?<span className="runtime-ui-skin-label">{el.label||el.name}</span>:null}
     </div>})}
-    {activeCutscene?<div className="runtime-cutscene-layer" onContextMenu={e=>e.preventDefault()}>
-      <video ref={cutsceneVideoRef} className={`runtime-cutscene-video fit-${activeCutscene.cutscene.fit||'contain'}`} src={activeCutscene.url} autoPlay playsInline muted={!!activeCutscene.cutscene.muted} onLoadedData={async e=>{try{await e.currentTarget.play();setCutsceneNeedsGesture(false)}catch{setCutsceneNeedsGesture(true)}}} onTimeUpdate={e=>setCutsceneTime(e.currentTarget.currentTime)} onEnded={()=>finishActiveCutscene()} onError={()=>finishActiveCutscene({skipped:true})}/>
+    {activeCutscene?<div className={`runtime-cutscene-layer phase-${activeCutscene.phase||'video'}`} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(['before','after'].includes(activeCutscene.phase)){e.stopPropagation();advanceCutsceneText()}}}>
+      {activeCutscene.phase==='video'?<video ref={cutsceneVideoRef} className={`runtime-cutscene-video fit-${activeCutscene.cutscene.fit||'contain'}`} src={activeCutscene.url} autoPlay playsInline muted={!!activeCutscene.cutscene.muted} onLoadedData={async e=>{try{await e.currentTarget.play();setCutsceneNeedsGesture(false)}catch{setCutsceneNeedsGesture(true)}}} onTimeUpdate={e=>setCutsceneTime(e.currentTarget.currentTime)} onEnded={()=>finishCutsceneVideo()} onError={()=>finishActiveCutscene({skipped:true})}/>:null}
       {activeCutsceneSubtitle?.text?<div className="runtime-cutscene-subtitle">{activeCutsceneSubtitle.text}</div>:null}
-      {cutsceneNeedsGesture?<button className="runtime-cutscene-start" onClick={async()=>{try{await cutsceneVideoRef.current?.play();setCutsceneNeedsGesture(false)}catch{}}}>Play cutscene</button>:null}
-      {activeCutscene.cutscene.skippable!==false?<button className="runtime-cutscene-skip" onClick={()=>finishActiveCutscene({skipped:true})}>Skip</button>:null}
+      {activeCutsceneText?<div className="runtime-cutscene-text-card"><div className={`runtime-cutscene-text-speaker ${activeCutsceneText.speakerId==='narrator'?'narrator':''}`}>{activeCutsceneText.speakerId==='narrator'?'Narrator':(activeCutsceneSpeaker?.name||activeCutsceneText.speakerId||'Narrator')}</div><div className="runtime-cutscene-text-line">{activeCutsceneText.text}</div><div className="runtime-cutscene-text-hint">Click to continue</div></div>:null}
+      {activeCutscene.phase==='video'&&cutsceneNeedsGesture?<button className="runtime-cutscene-start" onClick={async e=>{e.stopPropagation();try{await cutsceneVideoRef.current?.play();setCutsceneNeedsGesture(false)}catch{}}}>Play cutscene</button>:null}
+      {activeCutscene.cutscene.skippable!==false?<button className="runtime-cutscene-skip" onClick={e=>{e.stopPropagation();finishActiveCutscene({skipped:true})}}>Skip</button>:null}
     </div>:null}
     {!activeCutscene&&activeRuntimeCursorUrl&&runtimeCursorPoint.visible?<img className="runtime-custom-cursor" src={activeRuntimeCursorUrl} alt="" style={{left:runtimeCursorPoint.x,top:runtimeCursorPoint.y,transform:`translate(-50%, -50%) scale(${runtimeCursorScale})`}}/>:null}
     {pickupQueue.length>0&&<div className="runtime-pickup-backdrop" onClick={()=>setPickupQueue(q=>q.slice(1))}><div className="runtime-pickup-card" onClick={e=>{e.stopPropagation();setPickupQueue(q=>q.slice(1))}}><strong>{pickupQueue[0].text}</strong><span>Click to continue</span></div></div>}

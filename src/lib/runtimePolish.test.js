@@ -64,3 +64,23 @@ test('a previous speech bubble does not consume a new object interaction click',
   assert.match(source, /function clickObject[\s\S]*dismissSpeech\(\);[\s\S]*const verb=overrideVerb\|\|selectedVerb/);
   assert.doesNotMatch(source, /function clickObject[\s\S]{0,300}if\(dismissSpeech\(\)\)return/);
 });
+
+
+test('cutscene sequences support click-through text before and after video', async () => {
+  const source = await readFile(runtimeUrl, 'utf8');
+  assert.match(source, /cutscene\.beforeText/);
+  assert.match(source, /cutscene\.afterText/);
+  assert.match(source, /phase:\s*'video'/);
+  assert.match(source, /finishCutsceneVideo/);
+  assert.match(source, /advanceCutsceneText/);
+  assert.match(source, /Click to continue/);
+});
+
+test('cutscene pre and post text can identify narrator or project characters', async () => {
+  const editorUrl = new URL('../components/CutsceneEditor.jsx', import.meta.url);
+  const source = await readFile(editorUrl, 'utf8');
+  assert.match(source, /Text before cutscene/);
+  assert.match(source, /Text after cutscene/);
+  assert.match(source, /option value="narrator">Narrator/);
+  assert.match(source, /projectCharacters/);
+});

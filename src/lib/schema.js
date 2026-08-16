@@ -241,7 +241,9 @@ export function createCutscene(name = 'New Cutscene') {
     muted: false,
     fit: 'contain',
     conditions: [],
-    subtitles: []
+    beforeText: [],
+    subtitles: [],
+    afterText: []
   };
 }
 

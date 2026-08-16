@@ -143,5 +143,7 @@ test('scene cutscenes are authored in their own scene-scoped file', () => {
   assert.equal(cutscene.trigger, 'enter');
   assert.equal(cutscene.once, true);
   assert.deepEqual(cutscene.conditions, []);
+  assert.deepEqual(cutscene.beforeText, []);
   assert.deepEqual(cutscene.subtitles, []);
+  assert.deepEqual(cutscene.afterText, []);
 });

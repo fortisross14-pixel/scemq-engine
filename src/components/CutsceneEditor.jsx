@@ -28,12 +28,28 @@ function ConditionEditor({ condition, onChange, onDelete, items, variables, obje
   </div>;
 }
 
+
+function TextSequenceEditor({ title, lines = [], characters = [], onChange }) {
+  function addLine() { onChange([...lines, { id:`cutscene-text-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, speakerId:'narrator', text:'New text' }]); }
+  function updateLine(index, patch) { onChange(lines.map((line, i) => i === index ? { ...line, ...patch } : line)); }
+  function moveLine(index, direction) { const next=[...lines]; const target=index+direction; if(target<0||target>=next.length)return; [next[index],next[target]]=[next[target],next[index]]; onChange(next); }
+  return <>
+    <div className="inspector-divider"/><div className="section-heading-row"><span className="inspector-subtitle">{title}</span><button className="small-button" onClick={addLine}>+ Text</button></div>
+    {!lines.length && <div className="linked-note">Optional. Each line pauses the cutscene sequence until the player clicks to continue.</div>}
+    {lines.map((line,index)=><div className="cutscene-text-row" key={line.id||index}>
+      <div className="cutscene-text-row-head"><strong>Line {index+1}</strong><div><button className="icon-button" disabled={index===0} onClick={()=>moveLine(index,-1)}>↑</button><button className="icon-button" disabled={index===lines.length-1} onClick={()=>moveLine(index,1)}>↓</button><button className="icon-button" onClick={()=>onChange(lines.filter((_,i)=>i!==index))}>×</button></div></div>
+      <InspectorField label="Speaker"><select value={line.speakerId||'narrator'} onChange={e=>updateLine(index,{speakerId:e.target.value})}><option value="narrator">Narrator</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></InspectorField>
+      <InspectorField label="Text"><textarea rows="3" value={line.text||''} onChange={e=>updateLine(index,{text:e.target.value})}/></InspectorField>
+    </div>)}
+  </>;
+}
+
 function secondsValue(value) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
-export default function CutsceneEditor({ sceneId, cutscenes, assetUrls, items = [], globalVariables = [], sceneVariables = [], objects = [], onChange, onChooseVideo, onClearVideo, onImport, onExport }) {
+export default function CutsceneEditor({ sceneId, cutscenes, assetUrls, items = [], globalVariables = [], sceneVariables = [], objects = [], projectCharacters = [], onChange, onChooseVideo, onClearVideo, onImport, onExport }) {
   const list = cutscenes?.cutscenes || [];
   const [selectedId, setSelectedId] = useState(list[0]?.id || '');
   const selected = list.find(c => c.id === selectedId) || null;
@@ -76,6 +92,7 @@ export default function CutsceneEditor({ sceneId, cutscenes, assetUrls, items = 
       {!selected ? <div className="empty-inspector">Select or create a cutscene.</div> : <>
         <div className="object-title-row"><div><strong>{selected.name}</strong><small>{selected.id}</small></div><button className="danger-ghost" onClick={remove}>Delete</button></div>
         <InspectorField label="Name"><input value={selected.name || ''} onChange={e => update({ ...selected, name:e.target.value })}/></InspectorField>
+        <TextSequenceEditor title="Text before cutscene" lines={selected.beforeText || []} characters={projectCharacters} onChange={beforeText=>update({ ...selected, beforeText })}/>
         <div className="inspector-divider"/><div className="inspector-subtitle">Video</div>
         <div className="asset-path">{selected.video || 'No video assigned'}</div><div className="toolbar-group"><button className="wide-button" onClick={() => onChooseVideo(selected.id)}>{selected.video ? 'Replace video' : 'Choose video'}</button>{selected.video && <button className="icon-button" onClick={() => onClearVideo(selected.id)}>×</button>}</div>
         <InspectorField label="Fit"><select value={selected.fit || 'contain'} onChange={e => update({ ...selected, fit:e.target.value })}><option value="contain">contain</option><option value="cover">cover</option><option value="stretch">stretch</option></select></InspectorField>
@@ -97,6 +114,7 @@ export default function CutsceneEditor({ sceneId, cutscenes, assetUrls, items = 
           <textarea rows="2" value={subtitle.text || ''} onChange={e => update({ ...selected, subtitles:selected.subtitles.map((s, i) => i === index ? { ...s, text:e.target.value } : s) })}/>
           <button className="icon-button" onClick={() => update({ ...selected, subtitles:selected.subtitles.filter((_, i) => i !== index) })}>×</button>
         </div>)}
+        <TextSequenceEditor title="Text after cutscene" lines={selected.afterText || []} characters={projectCharacters} onChange={afterText=>update({ ...selected, afterText })}/>
       </>}
     </aside>
   </div>;
